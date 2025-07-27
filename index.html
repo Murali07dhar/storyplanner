@@ -80,11 +80,8 @@
             <div id="controls" class="p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 overflow-y-auto">
                 <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
                 <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
-                <div class="flex space-x-2">
-                    <button id="undoBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Undo</button>
-                    <button id="redoBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Redo</button>
-                </div>
                 <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">Create Snake</button>
+                <button id="addPointBtn" class="w-full px-4 py-2 bg-green-500 text-white font-semibold rounded-md hover:bg-green-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-75 cursor-grab">Add Point</button>
                 <button id="toggleThemeBtn" class="w-full px-4 py-2 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">Toggle Theme</button>
                 <button id="clearBoardBtn" class="w-full px-4 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-75">Clear Board</button>
                 
@@ -112,15 +109,13 @@
         const parentContainer = canvas.parentElement;
 
         // --- UI ELEMENTS ---
-        const controlsPanel = document.getElementById('controls');
         const createSnakeBtn = document.getElementById('createSnakeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
-        const undoBtn = document.getElementById('undoBtn');
-        const redoBtn = document.getElementById('redoBtn');
         const snakeControlsContainer = document.getElementById('snakeControlsContainer');
         const userInfoDiv = document.getElementById('userInfo');
         const noteBoxInput = document.getElementById('noteBoxInput');
+        const addPointBtn = document.getElementById('addPointBtn');
         
         // --- GLOBAL & FIRESTORE STATE ---
         let db, auth;
@@ -131,15 +126,12 @@
         let points = []; 
         let notes = [];
 
-        // --- HISTORY MANAGEMENT ---
-        let undoStack = [];
-        let redoStack = [];
-        let isReverting = false; // Flag to prevent listeners from saving history during undo/redo
-
         // --- INTERACTION STATE ---
         let isDraggingPoint = false, isDraggingSnake = false, isResizingNote = false, isDraggingNote = false, isPanning = false;
         let draggedPoint = null, draggedSnake = null, resizedNote = null, draggedNote = null, selectedPoint = null;
         let potentialDrag = null, mouseDownCoords = null, panStart = { x: 0, y: 0 };
+        let draggingNewPointState = { active: false, x: 0, y: 0, dropTarget: null };
+
 
         // Viewport state for panning and zooming
         let view = { x: 0, y: 0, zoom: 1 };
@@ -148,12 +140,12 @@
         const LIGHT_THEME = {
             background: '#FFFFFF', head: '#10B981', body: '#FFFFFF', tail: '#EF4444',
             line: '#374151', noteBg: '#FEF9C3', noteBorder: '#FDE047', link: '#0000EE', text: '#1F2937',
-            selection: '#007BFF'
+            selection: '#007BFF', lineHighlight: '#0EA5E9'
         };
         const DARK_THEME = {
             background: '#1F2937', head: '#34D399', body: '#FFFFFF', tail: '#F87171',
             line: '#9CA3AF', noteBg: '#4B5563', noteBorder: '#6B7280', link: '#60A5FA', text: '#F3F4F6',
-            selection: '#00AFFF'
+            selection: '#00AFFF', lineHighlight: '#38BDF8'
         };
         let COLORS = LIGHT_THEME;
         let currentTheme = 'light';
@@ -169,6 +161,7 @@
         const MIN_ZOOM = 0.2;
         const MAX_ZOOM = 5;
         const DRAG_THRESHOLD = 4;
+        const LINE_HIT_WIDTH = 10;
 
         // --- UTILITY & COORDINATE FUNCTIONS ---
         function debounce(func, delay) {
@@ -193,69 +186,6 @@
 
         function worldToScreen(worldX, worldY) {
             return { x: (worldX - view.x) * view.zoom, y: (worldY - view.y) * view.zoom };
-        }
-
-        // --- HISTORY FUNCTIONS ---
-        function saveState() {
-            if (isReverting) return;
-            const state = {
-                snakes: JSON.parse(JSON.stringify(snakes)),
-                points: JSON.parse(JSON.stringify(points)),
-                notes: JSON.parse(JSON.stringify(notes))
-            };
-            undoStack.push(state);
-            redoStack = []; // Clear redo stack on new action
-            updateUndoRedoButtons();
-        }
-
-        function undo() {
-            if (undoStack.length === 0) return;
-            isReverting = true;
-            
-            const currentState = {
-                snakes: JSON.parse(JSON.stringify(snakes)),
-                points: JSON.parse(JSON.stringify(points)),
-                notes: JSON.parse(JSON.stringify(notes))
-            };
-            redoStack.push(currentState);
-
-            const previousState = undoStack.pop();
-            applyState(previousState);
-            
-            isReverting = false;
-            updateUndoRedoButtons();
-        }
-
-        function redo() {
-            if (redoStack.length === 0) return;
-            isReverting = true;
-            
-            const currentState = {
-                snakes: JSON.parse(JSON.stringify(snakes)),
-                points: JSON.parse(JSON.stringify(points)),
-                notes: JSON.parse(JSON.stringify(notes))
-            };
-            undoStack.push(currentState);
-            
-            const nextState = redoStack.pop();
-            applyState(nextState);
-            
-            isReverting = false;
-            updateUndoRedoButtons();
-        }
-
-        function applyState(state) {
-            // This function will apply a state snapshot without triggering Firebase writes.
-            // It directly manipulates the local arrays and redraws.
-            const localSnakes = state.snakes.map(s => ({...s}));
-            const localPoints = state.points.map(p => ({...p}));
-            const localNotes = state.notes.map(n => ({...n}));
-            processAndDraw(localSnakes, localPoints, localNotes, false); // Pass false to skip saving state
-        }
-
-        function updateUndoRedoButtons() {
-            undoBtn.disabled = undoStack.length === 0;
-            redoBtn.disabled = redoStack.length === 0;
         }
 
         // --- CLASSES ---
@@ -347,11 +277,27 @@
             ctx.translate(canvas.width / 2, canvas.height / 2); ctx.scale(view.zoom, view.zoom);
             ctx.translate(-canvas.width / 2, -canvas.height / 2); ctx.translate(-view.x, -view.y);
             
+            // Highlight drop target line
+            if (draggingNewPointState.active && draggingNewPointState.dropTarget) {
+                const { snake, segmentIndex } = draggingNewPointState.dropTarget;
+                const p1 = snake.path[segmentIndex];
+                const p2 = snake.path[segmentIndex + 1];
+                if(p1 && p2) {
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.strokeStyle = COLORS.lineHighlight;
+                    ctx.lineWidth = 8;
+                    ctx.stroke();
+                }
+            }
+
             snakes.forEach(s => {
                 if (s.path && s.path.length > 1) {
                     ctx.beginPath(); ctx.moveTo(s.path[0].x, s.path[0].y);
                     for (let i = 1; i < s.path.length; i++) { ctx.lineTo(s.path[i].x, s.path[i].y); }
-                    ctx.strokeStyle = COLORS.line; ctx.lineWidth = 4; ctx.stroke();
+                    ctx.strokeStyle = s.color || COLORS.line;
+                    ctx.lineWidth = 4; ctx.stroke();
                 }
             });
             notes.forEach(n => { const p = points.find(pt => pt.id === n.attachedPointId); if (p) n.draw(p); });
@@ -372,6 +318,15 @@
                 ctx.strokeStyle = COLORS.selection; ctx.lineWidth = 3 / view.zoom;
                 ctx.beginPath(); ctx.arc(selectedPoint.x, selectedPoint.y, POINT_RADIUS * 1.5, 0, Math.PI * 2); ctx.stroke();
             }
+
+            // Draw the point being dragged from the UI
+            if (draggingNewPointState.active) {
+                ctx.beginPath();
+                ctx.arc(draggingNewPointState.x, draggingNewPointState.y, POINT_RADIUS, 0, Math.PI * 2);
+                ctx.fillStyle = draggingNewPointState.dropTarget ? '#22C55E' : 'rgba(0,0,0,0.5)'; // Green if snappable
+                ctx.fill();
+            }
+
             ctx.restore();
         }
 
@@ -380,10 +335,41 @@
             return null;
         }
 
+        function findClosestLineSegment(worldX, worldY) {
+            let closest = { dist: Infinity, snake: null, segmentIndex: -1, point: null };
+
+            for (const snake of snakes) {
+                if (!snake.path || snake.path.length < 2) continue;
+                for (let i = 0; i < snake.path.length - 1; i++) {
+                    const p1 = snake.path[i];
+                    const p2 = snake.path[i + 1];
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const lenSq = dx * dx + dy * dy;
+
+                    let t = ((worldX - p1.x) * dx + (worldY - p1.y) * dy) / lenSq;
+                    t = Math.max(0, Math.min(1, t)); // Clamp to segment
+
+                    const closestPoint = { x: p1.x + t * dx, y: p1.y + t * dy };
+                    const distSq = (worldX - closestPoint.x) ** 2 + (worldY - closestPoint.y) ** 2;
+
+                    if (distSq < closest.dist) {
+                        closest = { dist: distSq, snake: snake, segmentIndex: i, point: closestPoint };
+                    }
+                }
+            }
+
+            if (closest.dist < (LINE_HIT_WIDTH / view.zoom)**2) {
+                return closest;
+            }
+            return null;
+        }
+
+
         // --- EVENT HANDLERS ---
         function handleMouseDown(e) {
             e.preventDefault(); potentialDrag = null; if (e.button !== 0) return;
-            saveState(); // Save state on mouse down as a potential start of an action
             const worldCoords = screenToWorld(e.offsetX, e.offsetY); mouseDownCoords = worldCoords;
             for (let i = notes.length - 1; i >= 0; i--) {
                 const note = notes[i], p = points.find(pt => pt.id === note.attachedPointId);
@@ -461,7 +447,6 @@
 
         async function handleContextMenu(e) {
             e.preventDefault();
-            saveState();
             const worldCoords = screenToWorld(e.offsetX, e.offsetY);
             const clickedPoint = getPointAt(worldCoords.x, worldCoords.y);
             if(clickedPoint) {
@@ -490,7 +475,6 @@
         
         function handleDoubleClick(e) {
             e.preventDefault(); if (e.target !== canvas) return;
-            saveState();
             const worldCoords = screenToWorld(e.offsetX, e.offsetY);
             for (let i = notes.length - 1; i >= 0; i--) {
                 const note = notes[i], p = points.find(pt => pt.id === note.attachedPointId);
@@ -500,11 +484,10 @@
 
         async function removeBodyPoint(pointToRemove) {
             if (!pointToRemove || pointToRemove.type !== 'body') return;
-            saveState();
             const ownerSnake = snakes.find(s => s.path && s.path.some(p => p.id === pointToRemove.id));
             if (!ownerSnake) { console.warn("Could not find owner snake for point", pointToRemove.id); await deleteDoc(doc(pointsCollection, pointToRemove.id)); return; }
             const newPathArray = ownerSnake.path.map(p => p.id).filter(id => id !== pointToRemove.id);
-            if (newPathArray.length < 3) { console.log("Cannot remove point, snake must have at least 3 points."); return; }
+            if (newPathArray.length < 2) { console.log("Cannot remove point, snake must have at least 2 points."); return; } // Path needs at least head and tail
             const batch = writeBatch(db);
             batch.update(doc(snakesCollection, ownerSnake.id), { path: newPathArray });
             batch.delete(doc(pointsCollection, pointToRemove.id));
@@ -513,20 +496,66 @@
             try { await batch.commit(); selectedPoint = null; } catch (error) { console.error("Error removing body point:", error); }
         }
 
-        async function handleKeyDown(e) {
-            if (['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName)) return;
-            if ((e.key === 'Backspace' || e.key === 'Delete') && selectedPoint) {
-                e.preventDefault();
-                await removeBodyPoint(selectedPoint);
-            }
-            if (e.ctrlKey || e.metaKey) {
-                if (e.key === 'z') {
-                    e.preventDefault();
-                    undo();
-                } else if (e.key === 'y') {
-                    e.preventDefault();
-                    redo();
+        async function removeBranchSnakes(branchSnakes) {
+            const batch = writeBatch(db);
+            for (const snake of branchSnakes) {
+                batch.delete(doc(snakesCollection, snake.id));
+                const pointsToDelete = snake.path.slice(1);
+                for (const point of pointsToDelete) {
+                    batch.delete(doc(pointsCollection, point.id));
+                    const noteToDelete = notes.find(n => n.attachedPointId === point.id);
+                    if (noteToDelete) { batch.delete(doc(notesCollection, noteToDelete.id)); }
                 }
+            }
+            try { await batch.commit(); selectedPoint = null; } 
+            catch (error) { console.error("Error removing branches:", error); }
+        }
+
+        async function branchFromPoint(branchingPoint) {
+            if (!branchingPoint || branchingPoint.type !== 'body') return;
+            const ownerSnake = snakes.find(s => s.path && s.path.some(p => p.id === branchingPoint.id));
+            let newSnakeName = 'New Branch';
+            if (ownerSnake) {
+                const branchCount = snakes.filter(s => s.path && s.path[0]?.id === branchingPoint.id).length;
+                newSnakeName = `${ownerSnake.name.replace(/\s/g, '')} b${branchCount + 1}`;
+            }
+
+            const batch = writeBatch(db);
+            const newBodyData = { x: branchingPoint.x + 50, y: branchingPoint.y + 50, type: 'body' };
+            const newTailData = { x: branchingPoint.x + 50, y: branchingPoint.y + 150, type: 'tail' };
+            const newBodyRef = doc(collection(db, pointsCollection.path));
+            const newTailRef = doc(collection(db, pointsCollection.path));
+            batch.set(newBodyRef, newBodyData);
+            batch.set(newTailRef, newTailData);
+            const newSnakeData = {
+                name: newSnakeName,
+                path: [branchingPoint.id, newBodyRef.id, newTailRef.id],
+                color: '#FBBF24' // A nice yellow color
+            };
+            const newSnakeRef = doc(collection(db, snakesCollection.path));
+            batch.set(newSnakeRef, newSnakeData);
+            try { await batch.commit(); selectedPoint = null; } 
+            catch (error) { console.error("Error creating new branch:", error); }
+        }
+
+        async function handleKeyDown(e) {
+            if (['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName) || !selectedPoint) return;
+
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+                e.preventDefault();
+                const branches = snakes.filter(s => s.path[0]?.id === selectedPoint.id);
+                if (branches.length > 0) {
+                    showConfirmationModal(
+                        "This is a junction point. Are you sure you want to delete the entire branch originating from here?",
+                        () => removeBranchSnakes(branches),
+                        "Yes, Delete Branch"
+                    );
+                } else {
+                    await removeBodyPoint(selectedPoint);
+                }
+            } else if (e.key === 'k') {
+                e.preventDefault();
+                await branchFromPoint(selectedPoint);
             }
         }
 
@@ -537,7 +566,7 @@
             draw();
         }
 
-        function showConfirmationModal(message, onConfirm) {
+        function showConfirmationModal(message, onConfirm, confirmText = 'Confirm') {
             document.getElementById('confirmation-modal-overlay')?.remove();
             const overlay = document.createElement('div');
             overlay.id = 'confirmation-modal-overlay';
@@ -551,9 +580,9 @@
             btnContainer.className = 'flex justify-end space-x-3';
             const cancelBtn = document.createElement('button');
             cancelBtn.textContent = 'Cancel';
-            cancelBtn.className = 'px-5 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400';
+            cancelBtn.className = 'px-5 py-2 bg-gray-200 dark:bg-gray-600 dark:text-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400';
             const confirmBtn = document.createElement('button');
-            confirmBtn.textContent = 'Clear Board';
+            confirmBtn.textContent = confirmText;
             confirmBtn.className = 'px-5 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400';
             btnContainer.append(cancelBtn, confirmBtn);
             panel.append(text, btnContainer);
@@ -589,30 +618,7 @@
             textarea.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEditing(); } else if (e.key === 'Escape') { finishEditing(); } });
         }
 
-        async function removeSnake(snakeId) {
-            saveState();
-            const snakeToRemove = snakes.find(s => s.id === snakeId); if (!snakeToRemove || !snakeToRemove.path) return;
-            const batch = writeBatch(db); batch.delete(doc(snakesCollection, snakeId));
-            const pointIdsToRemove = new Set(snakeToRemove.path.map(p => p.id));
-            pointIdsToRemove.forEach(pointId => { batch.delete(doc(pointsCollection, pointId)); });
-            const notesSnapshot = await getDocs(notesCollection);
-            notesSnapshot.forEach(noteDoc => { if (pointIdsToRemove.has(noteDoc.data().attachedPointId)) { batch.delete(noteDoc.ref); } });
-            await batch.commit();
-        }
-        
-        async function addBodyPointToSnake(snakeId) {
-            saveState();
-            const snake = snakes.find(s => s.id === snakeId); if (!snake || !snake.path || snake.path.length < 2) return;
-            const beforeTail = snake.path[snake.path.length - 2], tail = snake.path[snake.path.length - 1];
-            const newPointData = { x: (beforeTail.x + tail.x) / 2, y: (beforeTail.y + tail.y) / 2, type: 'body' };
-            const newPointRef = await addDoc(pointsCollection, newPointData);
-            const newPathArray = snake.path.map(p => p.id);
-            newPathArray.splice(newPathArray.length - 1, 0, newPointRef.id);
-            await updateDoc(doc(snakesCollection, snakeId), { path: newPathArray });
-        }
-
         function showRenameInput(menuContainer) {
-            saveState();
             const snakeId = menuContainer.dataset.id, snake = snakes.find(s => s.id === snakeId);
             const toggleButton = menuContainer.querySelector('button'), dropdownContent = menuContainer.querySelector('.dropdown-content');
             dropdownContent.classList.add('hidden'); toggleButton.style.display = 'none';
@@ -633,7 +639,7 @@
             const toggleButton = document.createElement('button'); toggleButton.innerHTML = `${snake.name} Actions <span class="text-xs">▼</span>`;
             toggleButton.className = 'w-full text-left px-3 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400';
             const dropdownContent = document.createElement('div'); dropdownContent.className = 'dropdown-content absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg p-2 space-y-1 hidden z-10';
-            dropdownContent.innerHTML = `<button data-action="rename" class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Rename</button><button data-action="add-body" class="w-full text-left px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50 rounded-md">Add Body Point</button><div class="border-t my-1 dark:border-gray-600"></div><button data-action="remove" class="w-full text-left px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-md">Remove Snake</button>`;
+            dropdownContent.innerHTML = `<button data-action="rename" class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Rename</button><div class="border-t my-1 dark:border-gray-600"></div><button data-action="remove" class="w-full text-left px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-md">Remove Snake</button>`;
             menuContainer.append(toggleButton, dropdownContent); snakeControlsContainer.appendChild(menuContainer);
         }
 
@@ -645,19 +651,17 @@
             if (action) {
                 const snakeId = menuContainer.dataset.id;
                 if (action === 'rename') showRenameInput(menuContainer);
-                else if (action === 'add-body') addBodyPointToSnake(snakeId);
                 else if (action === 'remove') removeSnake(snakeId);
             }
         });
 
         createSnakeBtn.addEventListener('click', async () => {
-            saveState();
             const batch = writeBatch(db);
             const startX = view.x + (canvas.width / 2 / view.zoom), startY = view.y + (canvas.height / 2 / view.zoom);
             const headData = { x: startX, y: startY - 100, type: 'head' }, bodyData = { x: startX, y: startY, type: 'body' }, tailData = { x: startX, y: startY + 100, type: 'tail' };
             const headRef = doc(collection(db, pointsCollection.path)), bodyRef = doc(collection(db, pointsCollection.path)), tailRef = doc(collection(db, pointsCollection.path));
             batch.set(headRef, headData); batch.set(bodyRef, bodyData); batch.set(tailRef, tailData);
-            const snakeData = { name: `Snake ${snakes.length + 1}`, path: [headRef.id, bodyRef.id, tailRef.id] };
+            const snakeData = { name: `Snake ${snakes.filter(s => s.name.startsWith("Snake")).length + 1}`, path: [headRef.id, bodyRef.id, tailRef.id] };
             batch.set(doc(collection(db, snakesCollection.path)), snakeData);
             await batch.commit();
         });
@@ -668,11 +672,9 @@
         }
 
         clearBoardBtn.addEventListener('click', () => {
-            if (document.getElementById('note-editor') || document.getElementById('confirmation-modal-overlay')) return;
-            saveState();
             showConfirmationModal('Are you sure you want to clear the entire board?', async () => {
                 await Promise.all([ clearCollection(snakesCollection), clearCollection(pointsCollection), clearCollection(notesCollection), setDoc(noteBoxDocRef, { content: '' }) ]);
-            });
+            }, 'Clear Board');
         });
 
         // --- INITIALIZATION ---
@@ -693,7 +695,7 @@
             try { await signInAnonymously(auth); } catch (error) { console.error("Authentication failed:", error); userInfoDiv.textContent = 'Authentication failed.'; }
         }
         
-        function processAndDraw(localSnakes, localPoints, localNotes, shouldSaveState = true) {
+        function processAndDraw(localSnakes, localPoints, localNotes) {
             points = localPoints.map(pData => { const p = new Point(pData.x, pData.y, pData.type); p.id = pData.id; return p; });
             notes = localNotes.map(nData => { const n = new Note(nData.text, nData.attachedPointId); n.id = nData.id; n.width = nData.width; n.height = nData.height; n.offsetX = nData.offsetX; n.offsetY = nData.offsetY; return n; });
             const pointMap = new Map(points.map(p => [p.id, p]));
@@ -704,9 +706,6 @@
                  snakes.forEach(createSnakeDropdownMenu);
             } else { snakeControlsContainer.classList.remove('pt-2', 'border-t', 'dark:border-gray-700'); }
             
-            if (shouldSaveState) {
-                saveState();
-            }
             draw();
         }
 
@@ -730,17 +729,60 @@
             canvas.addEventListener('dblclick', handleDoubleClick);
             window.addEventListener('keydown', handleKeyDown);
             toggleThemeBtn.addEventListener('click', toggleTheme);
-            undoBtn.addEventListener('click', undo);
-            redoBtn.addEventListener('click', redo);
             
             const saveNoteBox = debounce(() => { 
-                saveState();
                 setDoc(noteBoxDocRef, { content: noteBoxInput.value }); 
             }, 500);
             noteBoxInput.addEventListener('input', saveNoteBox);
+            
+            // --- Drag and Drop for new point ---
+            function handleNewPointDragMove(e) {
+                e.preventDefault();
+                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
+                draggingNewPointState.x = worldCoords.x;
+                draggingNewPointState.y = worldCoords.y;
+                draggingNewPointState.dropTarget = findClosestLineSegment(worldCoords.x, worldCoords.y);
+                if (draggingNewPointState.dropTarget) {
+                    draggingNewPointState.x = draggingNewPointState.dropTarget.point.x;
+                    draggingNewPointState.y = draggingNewPointState.dropTarget.point.y;
+                }
+                draw();
+            }
+
+            async function handleNewPointDragEnd(e) {
+                window.removeEventListener('mousemove', handleNewPointDragMove);
+                window.removeEventListener('mouseup', handleNewPointDragEnd);
+                document.body.style.cursor = 'default';
+                
+                if (draggingNewPointState.dropTarget) {
+                    const { snake, segmentIndex, point } = draggingNewPointState.dropTarget;
+                    const newPointData = { x: point.x, y: point.y, type: 'body' };
+                    try {
+                        const newPointRef = await addDoc(pointsCollection, newPointData);
+                        const newPathArray = snake.path.map(p => p.id);
+                        newPathArray.splice(segmentIndex + 1, 0, newPointRef.id);
+                        await updateDoc(doc(snakesCollection, snake.id), { path: newPathArray });
+                    } catch (error) {
+                        console.error("Error adding new point:", error);
+                    }
+                }
+                draggingNewPointState.active = false;
+                draw();
+            }
+
+            addPointBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                draggingNewPointState.active = true;
+                const worldCoords = screenToWorld(e.clientX, e.clientY); // Initial position
+                draggingNewPointState.x = worldCoords.x;
+                draggingNewPointState.y = worldCoords.y;
+                document.body.style.cursor = 'grabbing';
+                window.addEventListener('mousemove', handleNewPointDragMove);
+                window.addEventListener('mouseup', handleNewPointDragEnd);
+            });
+
 
             initFirebase();
-            updateUndoRedoButtons();
         }
 
         init();
