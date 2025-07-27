@@ -21,7 +21,7 @@
             transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
             transform-origin: top;
         }
-        #note-editor {
+        #note-editor, #noteBoxInput {
             font-family: 'Inter', sans-serif;
             resize: none;
         }
@@ -32,11 +32,11 @@
         .dark body {
             background-color: #111827; /* gray-900 */
         }
-        .dark #controls {
+        .dark #controls, .dark #noteBox {
             background-color: rgba(31, 41, 55, 0.8); /* bg-gray-800/80 */
             border-color: #374151; /* border-gray-700 */
         }
-        .dark h2, .dark button, .dark .text-gray-700 {
+        .dark h2, .dark h3, .dark button, .dark .text-gray-700 {
             color: #D1D5DB; /* gray-300 */
         }
         .dark #userInfo {
@@ -61,20 +61,31 @@
          .dark .hover\:bg-sky-50:hover { background-color: rgba(56, 189, 248, 0.1); }
          .dark .text-red-700 { color: #FCA5A5; /* red-300 */ }
          .dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.1); }
+         .dark #noteBoxInput {
+            background-color: #374151; /* gray-700 */
+            color: #E5E7EB; /* gray-200 */
+            border-color: #4B5563; /* gray-600 */
+         }
     </style>
 </head>
 <body class="h-screen w-screen overflow-hidden flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-900">
 
     <div class="w-full h-full bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 relative overflow-hidden">
         
-        <div id="controls" class="absolute top-4 left-4 z-20 p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 max-h-[90vh] overflow-y-auto">
-            <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
-            <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
-            <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">Create Snake</button>
-            <button id="toggleThemeBtn" class="w-full px-4 py-2 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">Toggle Theme</button>
-            <button id="clearBoardBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Clear Board</button>
-            
-            <div id="snakeControlsContainer" class="flex flex-col space-y-2"></div>
+        <div class="absolute top-4 left-4 z-20 flex flex-col space-y-2 max-h-[90vh]">
+            <div id="controls" class="p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 overflow-y-auto">
+                <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
+                <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
+                <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">Create Snake</button>
+                <button id="toggleThemeBtn" class="w-full px-4 py-2 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">Toggle Theme</button>
+                <button id="clearBoardBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Clear Board</button>
+                
+                <div id="snakeControlsContainer" class="flex flex-col space-y-2"></div>
+            </div>
+            <div id="noteBox" class="p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2">
+                <h3 class="font-bold text-gray-700 text-lg">Note Box</h3>
+                <textarea id="noteBoxInput" class="w-full h-24 p-2 border rounded-md bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Type shared notes here..."></textarea>
+            </div>
         </div>
 
         <canvas id="whiteboard"></canvas>
@@ -85,7 +96,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- SETUP ---
         const canvas = document.getElementById('whiteboard');
@@ -99,10 +110,11 @@
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
         const snakeControlsContainer = document.getElementById('snakeControlsContainer');
         const userInfoDiv = document.getElementById('userInfo');
+        const noteBoxInput = document.getElementById('noteBoxInput');
         
         // --- GLOBAL & FIRESTORE STATE ---
         let db, auth;
-        let snakesCollection, pointsCollection, notesCollection;
+        let snakesCollection, pointsCollection, notesCollection, noteBoxDocRef;
         
         // Local state, populated by Firestore
         let snakes = []; 
@@ -151,6 +163,15 @@
         const MAX_ZOOM = 5;
 
         // --- UTILITY & COORDINATE FUNCTIONS ---
+        function debounce(func, delay) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
+        }
+
         function isValidUrl(string) {
             try {
                 const url = new URL(string);
@@ -853,7 +874,8 @@
                 await Promise.all([
                     clearCollection(snakesCollection),
                     clearCollection(pointsCollection),
-                    clearCollection(notesCollection)
+                    clearCollection(notesCollection),
+                    setDoc(noteBoxDocRef, { content: '' }) // Also clear the note box
                 ]);
             });
         });
@@ -877,6 +899,7 @@
             snakesCollection = collection(db, `snakes`);
             pointsCollection = collection(db, `points`);
             notesCollection = collection(db, `notes`);
+            noteBoxDocRef = doc(db, 'noteBox', 'mainNote'); // Define the single doc for the note box
 
             onAuthStateChanged(auth, user => {
                 if (user) {
@@ -950,19 +973,38 @@
                 localNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 processAndDraw(localSnakes, localPoints, localNotes);
             }, (error) => console.error("Error listening to notes:", error));
+
+            // Listener for the shared note box
+            onSnapshot(noteBoxDocRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    // Update only if content is different to avoid cursor jumps
+                    if (noteBoxInput.value !== data.content) {
+                        noteBoxInput.value = data.content;
+                    }
+                }
+            }, (error) => console.error("Error listening to note box:", error));
         }
 
         function init() {
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
+            // Event listeners are now attached directly to the canvas
             canvas.addEventListener('mousedown', handleMouseDown);
             canvas.addEventListener('mousemove', handleMouseMove);
             canvas.addEventListener('mouseup', handleMouseUp);
             canvas.addEventListener('mouseout', handleMouseUp); // Stop dragging if mouse leaves canvas
             canvas.addEventListener('wheel', handleWheel);
             canvas.addEventListener('contextmenu', handleContextMenu);
+            
             toggleThemeBtn.addEventListener('click', toggleTheme);
             
+            // Debounced save for the note box
+            const saveNoteBox = debounce(() => {
+                setDoc(noteBoxDocRef, { content: noteBoxInput.value });
+            }, 500);
+            noteBoxInput.addEventListener('input', saveNoteBox);
+
             initFirebase();
         }
 
