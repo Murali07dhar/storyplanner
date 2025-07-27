@@ -780,6 +780,10 @@
         });
 
         createSnakeBtn.addEventListener('click', async () => {
+            if (!db) {
+                alert('App is in offline mode. Cannot create new items.');
+                return;
+            }
             const batch = writeBatch(db);
             const startX = snakes.length === 0 
                 ? controlsPanel.offsetWidth + 80 + camera.x 
@@ -803,6 +807,7 @@
         });
 
         async function clearCollection(collectionRef) {
+             if (!db) return;
              const batch = writeBatch(db);
              const snapshot = await getDocs(collectionRef);
              snapshot.forEach(doc => batch.delete(doc.ref));
@@ -822,20 +827,26 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
+            let firebaseConfig;
             try {
-                // Check if Firebase config is provided and valid
-                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-                    userInfoDiv.textContent = 'Error: Firebase configuration is missing.';
-                    console.error('__firebase_config is not defined.');
-                    return;
-                }
-                
-                const firebaseConfig = JSON.parse(__firebase_config);
-                
+                // This will fail if __firebase_config is not defined or is not valid JSON
+                firebaseConfig = JSON.parse(__firebase_config);
+            } catch (error) {
+                console.warn("Firebase config not found or invalid. Running in offline mode.");
+                userInfoDiv.innerHTML = '<strong>Offline Mode</strong>';
+                // Disable buttons that require Firebase
+                createSnakeBtn.disabled = true;
+                createSnakeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                clearBoardBtn.disabled = true;
+                clearBoardBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                return; // Stop the initialization process
+            }
+            
+            try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                setLogLevel('error'); // Use 'debug' for more verbose logging
+                setLogLevel('error');
 
                 const publicPath = `/artifacts/${appId}/public/data`;
                 snakesCollection = collection(db, `${publicPath}/snakes`);
@@ -847,12 +858,10 @@
                         userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`;
                         setupRealtimeListeners();
                     } else {
-                        // This is expected to be called once with user=null initially
                         userInfoDiv.textContent = 'Authenticating...';
                     }
                 });
 
-                // Now, attempt to sign in
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -860,10 +869,7 @@
                 }
             } catch (error) {
                 console.error("Firebase Initialization or Auth Failed:", error);
-                userInfoDiv.innerHTML = `<span class="text-red-500">Connection Failed.</span>`;
-                if (error instanceof SyntaxError) {
-                     console.error("Failed to parse firebaseConfig. Check if it's valid JSON.");
-                }
+                userInfoDiv.innerHTML = `<span class="text-red-500 font-bold">Connection Failed.</span>`;
             }
         }
         
@@ -899,6 +905,7 @@
         }
 
         function setupRealtimeListeners() {
+            if (!db) return; // Don't set up listeners in offline mode
             let localSnakes = [];
             let localPoints = [];
             let localNotes = [];
