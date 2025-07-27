@@ -643,15 +643,59 @@
             menuContainer.append(toggleButton, dropdownContent); snakeControlsContainer.appendChild(menuContainer);
         }
 
+        async function removeSnake(snakeId) {
+            const snakeToRemove = snakes.find(s => s.id === snakeId);
+            if (!snakeToRemove) {
+                console.error("Could not find snake to remove with ID:", snakeId);
+                return;
+            }
+
+            showConfirmationModal(
+                "Are you sure you want to delete this snake? This will also remove all its points and notes.",
+                async () => {
+                    const batch = writeBatch(db);
+                    
+                    // Delete all points associated with the snake
+                    snakeToRemove.path.forEach(point => {
+                        if (point && point.id) {
+                            batch.delete(doc(pointsCollection, point.id));
+                            
+                            // Find and delete any notes attached to this point
+                            const noteToDelete = notes.find(n => n.attachedPointId === point.id);
+                            if (noteToDelete) {
+                                batch.delete(doc(notesCollection, noteToDelete.id));
+                            }
+                        }
+                    });
+
+                    // Delete the snake document itself
+                    batch.delete(doc(snakesCollection, snakeId));
+
+                    try {
+                        await batch.commit();
+                        console.log(`Snake ${snakeId} and all its assets have been removed.`);
+                    } catch (error) {
+                        console.error("Error removing snake:", error);
+                    }
+                },
+                "Yes, Delete Snake"
+            );
+        }
+
+
         snakeControlsContainer.addEventListener('click', e => {
             const button = e.target.closest('button'); if (!button) return;
             const menuContainer = e.target.closest('.snake-menu'); if (!menuContainer) return;
+            // This is the main toggle button for the dropdown
             if (button === menuContainer.querySelector('button')) { menuContainer.querySelector('.dropdown-content').classList.toggle('hidden'); return; }
             const action = button.dataset.action;
             if (action) {
                 const snakeId = menuContainer.dataset.id;
-                if (action === 'rename') showRenameInput(menuContainer);
-                else if (action === 'remove') removeSnake(snakeId);
+                if (action === 'rename') {
+                    showRenameInput(menuContainer);
+                } else if (action === 'remove') {
+                    removeSnake(snakeId);
+                }
             }
         });
 
@@ -680,9 +724,9 @@
         // --- INITIALIZATION ---
         async function initFirebase() {
             const firebaseConfig = {
-              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU", authDomain: "storyplanner-7ee69.firebaseapp.com",
-              projectId: "storyplanner-7ee69", storageBucket: "storyplanner-7ee69.appspot.com",
-              messagingSenderId: "45084211794", appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+             apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU", authDomain: "storyplanner-7ee69.firebaseapp.com",
+             projectId: "storyplanner-7ee69", storageBucket: "storyplanner-7ee69.appspot.com",
+             messagingSenderId: "45084211794", appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
             };
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app); auth = getAuth(app); setLogLevel('error');
