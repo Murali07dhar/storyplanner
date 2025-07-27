@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Snake Whiteboard</title>
+    <title>Collaborative Snake Blackboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
@@ -16,6 +16,9 @@
         #whiteboard {
             cursor: grab;
             touch-action: none;
+        }
+        #whiteboard.panning {
+            cursor: grabbing;
         }
         .dropdown-content {
             transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
@@ -30,13 +33,17 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 h-screen w-screen overflow-hidden flex flex-col items-center justify-center p-4">
+<body class="bg-gray-900 h-screen w-screen overflow-hidden flex flex-col items-center justify-center p-4">
 
-    <div class="w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 relative overflow-hidden">
+    <div class="w-full h-full bg-black rounded-xl shadow-lg border border-gray-700 relative overflow-hidden">
         
-        <div id="controls" class="absolute top-4 left-4 z-20 p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 max-h-[90vh] overflow-y-auto">
-            <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
-            <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
+        <div id="controls" class="absolute top-4 left-4 z-20 p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg shadow border border-gray-600 flex flex-col space-y-2 max-h-[90vh] overflow-y-auto">
+            <h2 class="font-bold text-gray-200 text-lg">Controls</h2>
+            <div class="text-sm text-gray-300 bg-gray-700/50 p-2 rounded-md">
+                <p><strong>Pan:</strong> Middle-click + Drag</p>
+                <p><strong>Add Note:</strong> Right-click on point</p>
+            </div>
+            <div id="userInfo" class="text-xs text-gray-400 bg-gray-700 p-2 rounded-md break-all">Connecting...</div>
             <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">Create Snake</button>
             <button id="clearBoardBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Clear Board</button>
             
@@ -74,6 +81,11 @@
         let points = []; 
         let notes = [];
 
+        // --- VIEWPORT & INTERACTION STATE ---
+        const view = { x: 0, y: 0 }; // The current pan offset of the canvas
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+
         // Local UI state
         let draggedPoint = null;
         let isDraggingPoint = false;
@@ -87,8 +99,14 @@
         const POINT_RADIUS = 12;
         const STRETCH_LIMIT = 300; 
         const COLORS = {
-            head: '#10B981', body: '#0EA5E9', tail: '#EF4444',
-            line: '#374151', noteBg: '#FEF9C3', noteBorder: '#FDE047', link: '#0000EE'
+            head: '#6EE7B7', // Lighter green for head
+            body: '#0EA5E9', 
+            tail: '#34D399', // Changed from red to green
+            line: '#E5E7EB', // Light gray for text, like chalk
+            noteBg: '#FEF9C3', 
+            noteBorder: '#FDE047', 
+            noteText: '#1F2937', // Dark text for yellow notes
+            link: '#60A5FA' // Lighter blue for links
         };
         const LABEL_FONT = 'bold 16px Inter';
         const LABEL_HEIGHT = 16;
@@ -105,11 +123,19 @@
                 return false;  
             }
         }
+        
+        // Converts screen coordinates (from mouse event) to world coordinates (on the canvas)
+        function getMouseWorldPos(e) {
+            return {
+                x: e.offsetX - view.x,
+                y: e.offsetY - view.y
+            };
+        }
+
 
         // --- CLASSES ---
         class Point {
             constructor(x, y, type) {
-                // ID is now assigned by Firestore
                 this.id = null;
                 this.x = x;
                 this.y = y;
@@ -118,14 +144,14 @@
                 this.originalY = 0;
             }
             draw(angle = 0) {
-                // Drawing logic remains the same
                 if (this.type === 'head') {
                     ctx.save();
                     ctx.translate(this.x, this.y);
                     ctx.rotate(angle);
                     ctx.fillStyle = COLORS.head;
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, POINT_RADIUS * 1.2, POINT_RADIUS * 0.9, 0, 0, Math.PI * 2);
+                    // Increased head size
+                    ctx.ellipse(0, 0, POINT_RADIUS * 1.4, POINT_RADIUS * 1.1, 0, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = 'white';
                     ctx.beginPath();
@@ -151,20 +177,19 @@
                     ctx.arc(this.x, this.y, POINT_RADIUS, 0, Math.PI * 2);
                     ctx.fillStyle = COLORS[this.type];
                     ctx.fill();
-                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; // Light border for contrast
                     ctx.lineWidth = 2;
                     ctx.stroke();
                 }
             }
             isClicked(mouseX, mouseY) {
                 const dist = Math.hypot(mouseX - this.x, mouseY - this.y);
-                return dist < POINT_RADIUS * 1.2;
+                return dist < POINT_RADIUS * 1.4; // Adjust click area for larger head
             }
         }
 
         class Note {
             constructor(text, attachedPointId) {
-                // ID is now assigned by Firestore
                 this.id = null;
                 this.text = text;
                 this.attachedPointId = attachedPointId;
@@ -176,7 +201,6 @@
                 this.offsetY = -50;
             }
 
-            // Drawing and interaction logic remains the same
             wrapText(context, text, x, y, maxWidth, lineHeight) {
                 const words = text.split(' ');
                 let line = '';
@@ -212,8 +236,8 @@
                 ctx.fillRect(noteX, noteY, this.width, this.height);
                 ctx.strokeRect(noteX, noteY, this.width, this.height);
                 const isLink = isValidUrl(this.text);
-                ctx.fillStyle = isLink ? COLORS.link : COLORS.line;
-                this.wrapText(ctx, this.text, noteX + 8, noteY + 8, this.width - 24, 18); // Adjust wrap width for icons
+                ctx.fillStyle = isLink ? COLORS.link : COLORS.noteText;
+                this.wrapText(ctx, this.text, noteX + 8, noteY + 8, this.width - 24, 18);
                 const deleteIconX = noteX + this.width - 10;
                 const deleteIconY = noteY + 10;
                 const iconSize = 6;
@@ -300,17 +324,57 @@
             if (!ctx) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Draw lines first
+            ctx.save();
+            ctx.translate(view.x, view.y); // Apply the pan offset
+
+            // Draw snake bodies
             snakes.forEach(snakeObj => {
                 if (snakeObj.path && snakeObj.path.length > 1) {
+                    // Draw the main yellow body
                     ctx.beginPath();
                     ctx.moveTo(snakeObj.path[0].x, snakeObj.path[0].y);
                     for (let i = 1; i < snakeObj.path.length; i++) {
                         ctx.lineTo(snakeObj.path[i].x, snakeObj.path[i].y);
                     }
-                    ctx.strokeStyle = COLORS.line;
-                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#FBBF24'; // A nice yellow color
+                    ctx.lineWidth = POINT_RADIUS * 1.4;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
                     ctx.stroke();
+
+                    // Draw randomized green spots on top
+                    ctx.fillStyle = '#16A34A'; // A solid green color
+                    for (let i = 0; i < snakeObj.path.length - 1; i++) {
+                        const p1 = snakeObj.path[i];
+                        const p2 = snakeObj.path[i+1];
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const dist = Math.hypot(dx, dy);
+                        const angle = Math.atan2(dy, dx);
+                        
+                        // Determine the number of spots based on the length of the segment
+                        const numSpots = Math.ceil(dist / 20); 
+
+                        for (let j = 0; j < numSpots; j++) {
+                            // Get a random point along the line segment
+                            const t = Math.random();
+                            const x = p1.x + dx * t;
+                            const y = p1.y + dy * t;
+
+                            // Add a random perpendicular offset to the spot's position
+                            const offsetAngle = angle + Math.PI / 2;
+                            const offsetDist = (Math.random() - 0.5) * POINT_RADIUS * 1.2;
+                            const spotX = x + Math.cos(offsetAngle) * offsetDist;
+                            const spotY = y + Math.sin(offsetAngle) * offsetDist;
+
+                            // Randomize the size of the spot
+                            const spotRadius = 2 + Math.random() * 3;
+
+                            ctx.beginPath();
+                            ctx.arc(spotX, spotY, spotRadius, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
                 }
             });
             
@@ -342,6 +406,8 @@
                     ctx.fillText(snakeObj.name, head.x, head.y - POINT_RADIUS - 5);
                 }
             });
+
+            ctx.restore(); // Restore context to pre-pan state
         }
 
         function getPointAt(mouseX, mouseY) {
@@ -354,11 +420,20 @@
         // --- EVENT HANDLERS ---
         function handleMouseDown(e) {
             e.preventDefault();
-            const mouseX = e.offsetX;
-            const mouseY = e.offsetY;
+            const worldPos = getMouseWorldPos(e);
+
+            // Middle mouse button for panning
+            if (e.button === 1) {
+                isPanning = true;
+                panStart.x = e.offsetX;
+                panStart.y = e.offsetY;
+                canvas.classList.add('panning');
+                return;
+            }
+
             if (e.button !== 0) return;
 
-            const clickedPoint = getPointAt(mouseX, mouseY);
+            const clickedPoint = getPointAt(worldPos.x, worldPos.y);
             if (clickedPoint) {
                 draggedPoint = clickedPoint;
                 isDraggingPoint = true;
@@ -370,27 +445,27 @@
                 const note = notes[i];
                 const parentPoint = points.find(p => p.id === note.attachedPointId);
                 if (parentPoint) {
-                    if (note.isDeleteClicked(mouseX, mouseY, parentPoint)) {
-                        deleteDoc(doc(notesCollection, note.id)); // Firestore delete
+                    if (note.isDeleteClicked(worldPos.x, worldPos.y, parentPoint)) {
+                        deleteDoc(doc(notesCollection, note.id));
                         return;
                     }
 
-                    if (note.isResizeClicked(mouseX, mouseY, parentPoint)) {
+                    if (note.isResizeClicked(worldPos.x, worldPos.y, parentPoint)) {
                         isResizingNote = true;
                         resizedNote = note;
                         resizedNote.originalWidth = note.width;
                         resizedNote.originalHeight = note.height;
-                        dragStart = { x: mouseX, y: mouseY };
+                        dragStart = { x: worldPos.x, y: worldPos.y };
                         canvas.style.cursor = 'nwse-resize';
                         return;
                     }
                     
-                    if (isValidUrl(note.text) && note.isLinkIconClicked(mouseX, mouseY, parentPoint)) {
+                    if (isValidUrl(note.text) && note.isLinkIconClicked(worldPos.x, worldPos.y, parentPoint)) {
                         window.open(note.text, '_blank');
                         return;
                     }
 
-                    if (note.isBodyClicked(mouseX, mouseY, parentPoint)) {
+                    if (note.isBodyClicked(worldPos.x, worldPos.y, parentPoint)) {
                         createNoteInput(note);
                         return;
                     }
@@ -405,10 +480,10 @@
                 const metrics = ctx.measureText(snake.name);
                 const labelX = head.x - metrics.width / 2;
                 const labelY = head.y - POINT_RADIUS - 5 - LABEL_HEIGHT;
-                if (mouseX > labelX && mouseX < labelX + metrics.width && mouseY > labelY && mouseY < labelY + LABEL_HEIGHT) {
+                if (worldPos.x > labelX && worldPos.x < labelX + metrics.width && worldPos.y > labelY && worldPos.y < labelY + LABEL_HEIGHT) {
                     draggedSnake = snake;
                     isDraggingSnake = true;
-                    dragStart = { x: mouseX, y: mouseY };
+                    dragStart = { x: worldPos.x, y: worldPos.y };
                     draggedSnake.path.forEach(p => { p.originalX = p.x; p.originalY = p.y; });
                     canvas.style.cursor = 'move';
                     return;
@@ -418,27 +493,19 @@
         
         async function handleContextMenu(e) {
             e.preventDefault();
-            const mouseX = e.offsetX;
-            const mouseY = e.offsetY;
-            const clickedPoint = getPointAt(mouseX, mouseY);
+            const worldPos = getMouseWorldPos(e);
+            const clickedPoint = getPointAt(worldPos.x, worldPos.y);
             if(clickedPoint) {
                 const existingNote = notes.find(n => n.attachedPointId === clickedPoint.id);
                 if(existingNote){
                     createNoteInput(existingNote);
                 } else {
-                    // Create note in Firestore
                     const newNoteData = {
-                        text: "Type something...",
-                        attachedPointId: clickedPoint.id,
-                        width: 160,
-                        height: 100,
-                        offsetX: 40,
-                        offsetY: -50,
+                        text: "Type something...", attachedPointId: clickedPoint.id,
+                        width: 160, height: 100, offsetX: 40, offsetY: -50,
                     };
                     try {
                         const docRef = await addDoc(notesCollection, newNoteData);
-                        // The onSnapshot listener will handle drawing it.
-                        // We can find the note locally now and open the editor
                         const tempNote = new Note(newNoteData.text, newNoteData.attachedPointId);
                         tempNote.id = docRef.id;
                         createNoteInput(tempNote);
@@ -451,18 +518,28 @@
 
         function handleMouseMove(e) {
             e.preventDefault();
-            const mouseX = e.offsetX;
-            const mouseY = e.offsetY;
+            
+            if (isPanning) {
+                const dx = e.offsetX - panStart.x;
+                const dy = e.offsetY - panStart.y;
+                view.x += dx;
+                view.y += dy;
+                panStart.x = e.offsetX;
+                panStart.y = e.offsetY;
+                draw();
+                return;
+            }
+
+            const worldPos = getMouseWorldPos(e);
 
             if (isResizingNote && resizedNote) {
-                const deltaX = mouseX - dragStart.x;
-                const deltaY = mouseY - dragStart.y;
+                const deltaX = worldPos.x - dragStart.x;
+                const deltaY = worldPos.y - dragStart.y;
                 resizedNote.width = Math.max(MIN_NOTE_WIDTH, resizedNote.originalWidth + deltaX);
                 resizedNote.height = Math.max(MIN_NOTE_HEIGHT, resizedNote.originalHeight + deltaY);
-                draw(); // Draw locally for smooth feedback
+                draw();
             } else if (isDraggingPoint && draggedPoint) {
-                // Dragging logic is local for performance, updates on mouse up
-                let currentX = e.offsetX, currentY = e.offsetY;
+                let currentX = worldPos.x, currentY = worldPos.y;
                 let ownerSnake = null, pointIndexInSnake = -1;
                 for (const snake of snakes) {
                     if(!snake.path) continue;
@@ -496,7 +573,7 @@
                 draggedPoint.y = currentY;
                 draw();
             } else if (isDraggingSnake && draggedSnake) {
-                const deltaX = mouseX - dragStart.x, deltaY = mouseY - dragStart.y;
+                const deltaX = worldPos.x - dragStart.x, deltaY = worldPos.y - dragStart.y;
                 draggedSnake.path.forEach(p => { p.x = p.originalX + deltaX; p.y = p.originalY + deltaY; });
                 draw();
             }
@@ -505,7 +582,11 @@
         function handleMouseUp(e) {
             e.preventDefault();
 
-            // On mouse up, write the final state to Firestore
+            if (e.button === 1) {
+                isPanning = false;
+                canvas.classList.remove('panning');
+            }
+
             if (isDraggingPoint && draggedPoint) {
                 updateDoc(doc(pointsCollection, draggedPoint.id), { x: draggedPoint.x, y: draggedPoint.y });
             }
@@ -528,7 +609,6 @@
         
         // --- UI/CONTROL LOGIC ---
         function showConfirmationModal(message, onConfirm) {
-            // This function creates a modal and doesn't need changes for Firestore
             document.getElementById('confirmation-modal-overlay')?.remove();
             const overlay = document.createElement('div');
             overlay.id = 'confirmation-modal-overlay';
@@ -549,7 +629,6 @@
             btnContainer.append(cancelBtn, confirmBtn);
             panel.append(text, btnContainer);
             overlay.appendChild(panel);
-            document.body.appendChild(overlay);
             setTimeout(() => {
                 panel.classList.remove('opacity-0', 'translate-y-4');
                 panel.classList.add('opacity-100', 'translate-y-0');
@@ -564,9 +643,7 @@
                 closeModal();
             });
             overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) {
-                    closeModal();
-                }
+                if (e.target === overlay) closeModal();
             });
         }
 
@@ -578,12 +655,13 @@
             textarea.id = 'note-editor';
             textarea.value = note.text === "Type something..." ? "" : note.text;
             textarea.style.position = 'absolute';
-            textarea.style.left = `${canvas.offsetLeft + parentPoint.x + note.offsetX}px`;
-            textarea.style.top = `${canvas.offsetTop + parentPoint.y + note.offsetY}px`;
+            // Position the textarea relative to the panned view
+            textarea.style.left = `${canvas.offsetLeft + parentPoint.x + note.offsetX + view.x}px`;
+            textarea.style.top = `${canvas.offsetTop + parentPoint.y + note.offsetY + view.y}px`;
             textarea.style.width = `${note.width}px`;
             textarea.style.height = `${note.height}px`;
             textarea.style.zIndex = '30';
-            textarea.className = 'p-2 border-2 border-blue-500 rounded-md shadow-lg focus:outline-none bg-yellow-50';
+            textarea.className = 'p-2 border-2 border-blue-500 rounded-md shadow-lg focus:outline-none bg-yellow-50 text-gray-900';
             parentContainer.appendChild(textarea);
             textarea.focus();
             textarea.select();
@@ -594,7 +672,6 @@
                          updateDoc(doc(notesCollection, note.id), { text: newText });
                     }
                     parentContainer.removeChild(textarea);
-                    // No need to call draw() here, onSnapshot will handle it.
                 }
             };
             textarea.addEventListener('blur', finishEditing);
@@ -607,45 +684,32 @@
         async function removeSnake(snakeId) {
             const snakeToRemove = snakes.find(s => s.id === snakeId);
             if (!snakeToRemove || !snakeToRemove.path) return;
-
             const batch = writeBatch(db);
-            
-            // Delete the snake document
             batch.delete(doc(snakesCollection, snakeId));
-
-            // Delete all its points
             const pointIdsToRemove = new Set(snakeToRemove.path.map(p => p.id));
             pointIdsToRemove.forEach(pointId => {
                 batch.delete(doc(pointsCollection, pointId));
             });
-
-            // Find and delete all associated notes
             const notesSnapshot = await getDocs(notesCollection);
             notesSnapshot.forEach(noteDoc => {
                 if (pointIdsToRemove.has(noteDoc.data().attachedPointId)) {
                     batch.delete(noteDoc.ref);
                 }
             });
-            
             await batch.commit();
         }
         
         async function addBodyPointToSnake(snakeId) {
             const snake = snakes.find(s => s.id === snakeId);
             if (!snake || !snake.path || snake.path.length < 2) return;
-            
             const beforeTail = snake.path[snake.path.length - 2];
             const tail = snake.path[snake.path.length - 1];
-            
-            // 1. Create the new point in Firestore
             const newPointData = {
                 x: (beforeTail.x + tail.x) / 2,
                 y: (beforeTail.y + tail.y) / 2,
                 type: 'body'
             };
             const newPointRef = await addDoc(pointsCollection, newPointData);
-
-            // 2. Update the snake's path array in Firestore
             const newPathArray = snake.path.map(p => p.id);
             newPathArray.splice(newPathArray.length - 1, 0, newPointRef.id);
             await updateDoc(doc(snakesCollection, snakeId), { path: newPathArray });
@@ -661,7 +725,7 @@
             const input = document.createElement('input');
             input.type = 'text';
             input.value = snake.name;
-            input.className = 'w-full px-3 py-2 bg-white border border-blue-400 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400';
+            input.className = 'w-full px-3 py-2 bg-gray-600 border border-blue-400 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-white';
             menuContainer.insertBefore(input, toggleButton);
             input.focus();
             input.select();
@@ -672,7 +736,6 @@
                 }
                 menuContainer.removeChild(input);
                 toggleButton.style.display = 'block';
-                // onSnapshot will update the button text
             };
             input.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') finishRename(); });
             input.addEventListener('blur', finishRename);
@@ -684,10 +747,10 @@
             menuContainer.dataset.id = snake.id;
             const toggleButton = document.createElement('button');
             toggleButton.innerHTML = `${snake.name} Actions <span class="text-xs">▼</span>`;
-            toggleButton.className = 'w-full text-left px-3 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400';
+            toggleButton.className = 'w-full text-left px-3 py-2 bg-gray-700 text-gray-200 font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500';
             const dropdownContent = document.createElement('div');
-            dropdownContent.className = 'dropdown-content absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg p-2 space-y-1 hidden z-10';
-            dropdownContent.innerHTML = `<button data-action="rename" class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md">Rename</button><button data-action="add-body" class="w-full text-left px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50 rounded-md">Add Body Point</button><div class="border-t my-1"></div><button data-action="remove" class="w-full text-left px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-md">Remove Snake</button>`;
+            dropdownContent.className = 'dropdown-content absolute left-0 right-0 mt-1 bg-gray-700 border border-gray-600 rounded-md shadow-lg p-2 space-y-1 hidden z-10';
+            dropdownContent.innerHTML = `<button data-action="rename" class="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-600 rounded-md">Rename</button><button data-action="add-body" class="w-full text-left px-3 py-1.5 text-sm text-sky-400 hover:bg-gray-600 rounded-md">Add Body Point</button><div class="border-t border-gray-600 my-1"></div><button data-action="remove" class="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-gray-600 rounded-md">Remove Snake</button>`;
             menuContainer.append(toggleButton, dropdownContent);
             snakeControlsContainer.appendChild(menuContainer);
         }
@@ -697,7 +760,6 @@
             if (!button) return;
             const menuContainer = e.target.closest('.snake-menu');
             if (!menuContainer) return;
-            // This is the main toggle button for the dropdown
             if (button === menuContainer.querySelector('button')) {
                 menuContainer.querySelector('.dropdown-content').classList.toggle('hidden');
                 return;
@@ -713,36 +775,38 @@
 
         createSnakeBtn.addEventListener('click', async () => {
             const batch = writeBatch(db);
+            const snakesPerRow = 8;
+            const horizontalSpacing = 150;
+            const verticalSpacing = 350;
+            // Place new snakes relative to the current view, not absolute 0,0
+            const initialXOffset = -view.x + controlsPanel.offsetWidth + 80;
+            const initialYOffset = -view.y + 100;
 
-            // Find a good starting position
-            const startX = snakes.length === 0 
-                ? controlsPanel.offsetWidth + 80 
-                : Math.max(...snakes.map(s => s.path[0].x)) + 150;
+            const snakeIndex = snakes.length;
+            const rowIndex = Math.floor(snakeIndex / snakesPerRow);
+            const colIndex = snakeIndex % snakesPerRow;
+
+            const startX = initialXOffset + (colIndex * horizontalSpacing);
+            const startY = initialYOffset + (rowIndex * verticalSpacing);
             
-            // Create data for the 3 points
-            const headData = { x: startX, y: 100, type: 'head' };
-            const bodyData = { x: startX, y: 200, type: 'body' };
-            const tailData = { x: startX, y: 300, type: 'tail' };
+            const headData = { x: startX, y: startY, type: 'head' };
+            const bodyData = { x: startX, y: startY + 100, type: 'body' };
+            const tailData = { x: startX, y: startY + 200, type: 'tail' };
             
-            // Create Firestore document references for the points
             const headRef = doc(collection(db, pointsCollection.path));
             const bodyRef = doc(collection(db, pointsCollection.path));
             const tailRef = doc(collection(db, pointsCollection.path));
 
-            // Add the point creation to the batch
             batch.set(headRef, headData);
             batch.set(bodyRef, bodyData);
             batch.set(tailRef, tailData);
             
-            // Create data for the snake, using the IDs of the point refs
             const snakeData = {
                 name: `Snake ${snakes.length + 1}`,
-                path: [headRef.id, bodyRef.id, tailRef.id] // Store an array of point IDs
+                path: [headRef.id, bodyRef.id, tailRef.id]
             };
             const snakeRef = doc(collection(db, snakesCollection.path));
             batch.set(snakeRef, snakeData);
-
-            // Commit the batch to create all documents atomically
             await batch.commit();
         });
 
@@ -755,40 +819,39 @@
 
         clearBoardBtn.addEventListener('click', () => {
             if (document.getElementById('note-editor') || document.getElementById('confirmation-modal-overlay')) return;
-            
             showConfirmationModal('Are you sure you want to clear the entire board?', async () => {
                 await Promise.all([
                     clearCollection(snakesCollection),
                     clearCollection(pointsCollection),
                     clearCollection(notesCollection)
                 ]);
+                // Reset the view after clearing
+                view.x = 0;
+                view.y = 0;
+                draw();
             });
         });
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            // Your web app's Firebase configuration
             const firebaseConfig = {
-              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
-              authDomain: "storyplanner-7ee69.firebaseapp.com",
-              projectId: "storyplanner-7ee69",
-              storageBucket: "storyplanner-7ee69.firebasestorage.app",
-              messagingSenderId: "45084211794",
-              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+             apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
+             authDomain: "storyplanner-7ee69.firebaseapp.com",
+             projectId: "storyplanner-7ee69",
+             storageBucket: "storyplanner-7ee69.appspot.com",
+             messagingSenderId: "45084211794",
+             appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
             };
 
-            // Initialize Firebase
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            setLogLevel('error'); // Use 'debug' for more verbose logging
+            setLogLevel('error');
 
-            // Define collection paths at the root of the database
             snakesCollection = collection(db, `snakes`);
             pointsCollection = collection(db, `points`);
             notesCollection = collection(db, `notes`);
 
-            // Sign in and set up listeners
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`;
@@ -806,9 +869,7 @@
             }
         }
         
-        // This function reconstructs local data from Firestore snapshots and redraws the UI
         function processAndDraw(localSnakes, localPoints, localNotes) {
-            // Re-create class instances from raw Firestore data
             points = localPoints.map(pData => {
                 const point = new Point(pData.x, pData.y, pData.type);
                 point.id = pData.id;
@@ -829,18 +890,16 @@
             
             snakes = localSnakes.map(sData => {
                 const snake = { ...sData };
-                // Replace the array of point IDs with actual Point objects, maintaining order
                 snake.path = sData.path ? sData.path.map(pointId => pointMap.get(pointId)).filter(p => p) : [];
                 return snake;
             });
             
-            // Rebuild the control panel UI from the new state
             snakeControlsContainer.innerHTML = '';
             if (snakes.length > 0) {
-                 snakeControlsContainer.classList.add('pt-2', 'border-t');
+                 snakeControlsContainer.classList.add('pt-2', 'border-t', 'border-gray-600');
                  snakes.forEach(createSnakeDropdownMenu);
             } else {
-                 snakeControlsContainer.classList.remove('pt-2', 'border-t');
+                 snakeControlsContainer.classList.remove('pt-2', 'border-t', 'border-gray-600');
             }
 
             draw();
@@ -877,6 +936,7 @@
             canvas.addEventListener('contextmenu', handleContextMenu);
             
             initFirebase();
+            draw();
         }
 
         init();
