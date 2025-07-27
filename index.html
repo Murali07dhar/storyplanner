@@ -95,7 +95,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- SETUP ---
@@ -115,7 +115,6 @@
         // --- GLOBAL & FIRESTORE STATE ---
         let db, auth;
         let snakesCollection, pointsCollection, notesCollection, noteBoxDocRef;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         
         // Local state, populated by Firestore
         let snakes = []; 
@@ -930,24 +929,24 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-
-            if (!firebaseConfig.apiKey) {
-                userInfoDiv.textContent = 'Firebase config not found.';
-                console.error("Firebase config not found. Please provide it.");
-                return;
-            }
+            const firebaseConfig = {
+              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
+              authDomain: "storyplanner-7ee69.firebaseapp.com",
+              projectId: "storyplanner-7ee69",
+              storageBucket: "storyplanner-7ee69.appspot.com",
+              messagingSenderId: "45084211794",
+              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+            };
 
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
             setLogLevel('error');
 
-            const publicDataPath = `/artifacts/${appId}/public/data`;
-            snakesCollection = collection(db, `${publicDataPath}/snakes`);
-            pointsCollection = collection(db, `${publicDataPath}/points`);
-            notesCollection = collection(db, `${publicDataPath}/notes`);
-            noteBoxDocRef = doc(db, `${publicDataPath}/noteBox/mainNote`);
+            snakesCollection = collection(db, `snakes`);
+            pointsCollection = collection(db, `points`);
+            notesCollection = collection(db, `notes`);
+            noteBoxDocRef = doc(db, 'noteBox', 'mainNote');
 
             onAuthStateChanged(auth, user => {
                 if (user) {
@@ -959,11 +958,7 @@
             });
 
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication failed.';
@@ -1030,7 +1025,7 @@
                 if (doc.exists()) {
                     const data = doc.data();
                     if (noteBoxInput.value !== data.content) {
-                        noteBoxInput.value = data.content || '';
+                        noteBoxInput.value = data.content;
                     }
                 }
             }, (error) => console.error("Error listening to note box:", error));
@@ -1050,7 +1045,7 @@
             toggleThemeBtn.addEventListener('click', toggleTheme);
             
             const saveNoteBox = debounce(() => {
-                setDoc(noteBoxDocRef, { content: noteBoxInput.value }, { merge: true });
+                setDoc(noteBoxDocRef, { content: noteBoxInput.value });
             }, 500);
             noteBoxInput.addEventListener('input', saveNoteBox);
 
