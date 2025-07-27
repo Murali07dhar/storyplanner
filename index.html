@@ -1,945 +1,1771 @@
+
+Conversation with Gemini
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Snake Whiteboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            overscroll-behavior: none;
-            transition: background-color 0.3s ease;
-        }
-        #whiteboard {
-            cursor: grab;
-            touch-action: none;
-            transition: background-color 0.3s ease;
-        }
-        .dropdown-content {
-            transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
-            transform-origin: top;
-        }
-        #note-editor {
-            font-family: 'Inter', sans-serif;
-            resize: none;
-        }
-        .modal-panel {
-             transition: opacity 0.2s ease-out, transform 0.2s ease-out;
-        }
-    </style>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Collaborative Snake Whiteboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+
+        body {
+
+            font-family: 'Inter', sans-serif;
+
+            overscroll-behavior: none;
+
+        }
+
+        #whiteboard {
+
+            cursor: grab;
+
+            touch-action: none;
+
+        }
+
+        .dropdown-content {
+
+            transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+
+            transform-origin: top;
+
+        }
+
+        #note-editor {
+
+            font-family: 'Inter', sans-serif;
+
+            resize: none;
+
+        }
+
+        .modal-panel {
+
+             transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+
+        }
+
+    </style>
+
 </head>
+
 <body class="bg-gray-100 h-screen w-screen overflow-hidden flex flex-col items-center justify-center p-4">
 
-    <div class="w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 relative overflow-hidden">
-        
-        <div id="controls" class="absolute top-4 left-4 z-20 p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 max-h-[90vh] overflow-y-auto">
-            <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
-            <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
-            <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">Create Snake</button>
-            <button id="clearBoardBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Clear Board</button>
-            
-            <!-- Theme Switcher -->
-            <div class="pt-2 border-t border-gray-200">
-                <h3 class="font-semibold text-gray-600 text-sm mb-2">Theme</h3>
-                <div class="flex space-x-2">
-                    <button id="themeWhiteBtn" class="flex-1 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400">Light</button>
-                    <button id="themeBlackBtn" class="flex-1 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400">Dark</button>
-                </div>
-            </div>
 
-            <div id="snakeControlsContainer" class="flex flex-col space-y-2"></div>
-        </div>
 
-        <canvas id="whiteboard"></canvas>
+    <div class="w-full h-full bg-white rounded-xl shadow-lg border border-gray-200 relative overflow-hidden">
 
-    </div>
+        
 
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // --- SETUP ---
-        const canvas = document.getElementById('whiteboard');
-        const ctx = canvas.getContext('2d');
-        const parentContainer = canvas.parentElement;
+        <div id="controls" class="absolute top-4 left-4 z-20 p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 max-h-[90vh] overflow-y-auto">
 
-        // --- UI ELEMENTS ---
-        const controlsPanel = document.getElementById('controls');
-        const createSnakeBtn = document.getElementById('createSnakeBtn');
-        const clearBoardBtn = document.getElementById('clearBoardBtn');
-        const snakeControlsContainer = document.getElementById('snakeControlsContainer');
-        const userInfoDiv = document.getElementById('userInfo');
-        const themeWhiteBtn = document.getElementById('themeWhiteBtn');
-        const themeBlackBtn = document.getElementById('themeBlackBtn');
-        
-        // --- GLOBAL & FIRESTORE STATE ---
-        let db, auth;
-        let snakesCollection, pointsCollection, notesCollection;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
 
-        // Local state, populated by Firestore
-        let snakes = []; 
-        let points = []; 
-        let notes = [];
+            <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
 
-        // Local UI state
-        let draggedPoint = null;
-        let isDraggingPoint = false;
-        let draggedSnake = null;
-        let isDraggingSnake = false;
-        let resizedNote = null;
-        let isResizingNote = false;
-        let isPanning = false;
-        let dragStart = { x: 0, y: 0 };
-        
-        // --- CAMERA & VIEWPORT ---
-        let camera = { x: 0, y: 0 };
+            <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">Create Snake</button>
 
-        // --- THEME & COLORS ---
-        let currentTheme = 'white';
-        const THEMES = {
-            white: {
-                bg: '#FFFFFF',
-                bodyBg: '#F3F4F6', // Tailwind bg-gray-100
-                controlsText: '#374151', // Tailwind text-gray-700
-                head: '#10B981', 
-                body: '#0EA5E9', 
-                tail: '#EF4444',
-                line: '#374151', 
-                noteBg: '#FEF9C3', 
-                noteBorder: '#FDE047', 
-                link: '#0000EE'
-            },
-            black: {
-                bg: '#1F2937', // Tailwind bg-gray-800
-                bodyBg: '#111827', // Tailwind bg-gray-900
-                controlsText: '#E5E7EB', // Tailwind text-gray-200
-                head: '#10B981', 
-                body: '#0EA5E9', 
-                tail: '#EF4444',
-                line: '#FFFFFF', // Line color changes to white
-                noteBg: '#4B5563', 
-                noteBorder: '#FBBF24', 
-                link: '#60A5FA'
-            }
-        };
-        let COLORS = THEMES.white; // Start with the white theme
+            <button id="clearBoardBtn" class="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-md hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75">Clear Board</button>
 
-        // --- CONSTANTS ---
-        const POINT_RADIUS = 12;
-        const STRETCH_LIMIT = 300; 
-        const LABEL_FONT = 'bold 16px Inter';
-        const LABEL_HEIGHT = 16;
-        const NOTE_FONT = '14px Inter';
-        const MIN_NOTE_WIDTH = 80;
-        const MIN_NOTE_HEIGHT = 40;
+            
 
-        // --- UTILITY & COORDINATE FUNCTIONS ---
-        function isValidUrl(string) {
-            try {
-                const url = new URL(string);
-                return url.protocol === "http:" || url.protocol === "https:";
-            } catch (_) {
-                return false;  
-            }
-        }
+            <div id="snakeControlsContainer" class="flex flex-col space-y-2"></div>
 
-        function screenToWorld(screenX, screenY) {
-            return { x: screenX + camera.x, y: screenY + camera.y };
-        }
+        </div>
 
-        function worldToScreen(worldX, worldY) {
-            return { x: worldX - camera.x, y: worldY - camera.y };
-        }
 
-        // --- CLASSES ---
-        class Point {
-            constructor(x, y, type) {
-                this.id = null;
-                this.x = x; // World coordinates
-                this.y = y; // World coordinates
-                this.type = type;
-                this.originalX = 0;
-                this.originalY = 0;
-            }
-            draw(angle = 0) {
-                // Drawing logic uses the global COLORS object, which is theme-dependent
-                if (this.type === 'head') {
-                    ctx.save();
-                    ctx.translate(this.x, this.y);
-                    ctx.rotate(angle);
-                    ctx.fillStyle = COLORS.head;
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, POINT_RADIUS * 1.2, POINT_RADIUS * 0.9, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.fillStyle = 'white';
-                    ctx.beginPath();
-                    ctx.arc(POINT_RADIUS * 0.5, -POINT_RADIUS * 0.4, 2, 0, Math.PI * 2);
-                    ctx.arc(POINT_RADIUS * 0.5, POINT_RADIUS * 0.4, 2, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.fillStyle = 'black';
-                    ctx.beginPath();
-                    ctx.arc(POINT_RADIUS * 0.6, -POINT_RADIUS * 0.4, 1, 0, Math.PI * 2);
-                    ctx.arc(POINT_RADIUS * 0.6, POINT_RADIUS * 0.4, 1, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.restore();
-                } else if (this.type === 'tail') {
-                    ctx.fillStyle = COLORS.tail;
-                    ctx.beginPath();
-                    ctx.moveTo(this.x, this.y + POINT_RADIUS);
-                    ctx.lineTo(this.x - POINT_RADIUS, this.y - POINT_RADIUS / 2);
-                    ctx.lineTo(this.x + POINT_RADIUS, this.y - POINT_RADIUS / 2);
-                    ctx.closePath();
-                    ctx.fill();
-                } else {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, POINT_RADIUS, 0, Math.PI * 2);
-                    ctx.fillStyle = COLORS.body; // Use body color for body points
-                    ctx.fill();
-                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-            }
-            isClicked(mouseX, mouseY) { // Expects world coordinates
-                const dist = Math.hypot(mouseX - this.x, mouseY - this.y);
-                return dist < POINT_RADIUS * 1.2;
-            }
-        }
 
-        class Note {
-            constructor(text, attachedPointId) {
-                this.id = null;
-                this.text = text;
-                this.attachedPointId = attachedPointId;
-                this.width = 160;
-                this.height = 100;
-                this.originalWidth = 0;
-                this.originalHeight = 0;
-                this.offsetX = 40;
-                this.offsetY = -50;
-            }
+        <canvas id="whiteboard"></canvas>
 
-            wrapText(context, text, x, y, maxWidth, lineHeight) {
-                const words = text.split(' ');
-                let line = '';
-                context.font = NOTE_FONT;
-                context.textAlign = 'left';
-                context.textBaseline = 'top';
-                for(let n = 0; n < words.length; n++) {
-                    const testLine = line + words[n] + ' ';
-                    const metrics = context.measureText(testLine);
-                    if (metrics.width > maxWidth && n > 0) {
-                        context.fillText(line, x, y);
-                        line = words[n] + ' ';
-                        y += lineHeight;
-                    } else {
-                        line = testLine;
-                    }
-                }
-                context.fillText(line, x, y);
-            }
-            
-            draw(parentPoint) { // Parent point is in world coordinates
-                const noteX = parentPoint.x + this.offsetX;
-                const noteY = parentPoint.y + this.offsetY;
-                ctx.beginPath();
-                ctx.moveTo(parentPoint.x, parentPoint.y);
-                ctx.lineTo(noteX, noteY + this.height / 2);
-                ctx.strokeStyle = '#9CA3AF';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = COLORS.noteBg;
-                ctx.strokeStyle = COLORS.noteBorder;
-                ctx.lineWidth = 1.5;
-                ctx.fillRect(noteX, noteY, this.width, this.height);
-                ctx.strokeRect(noteX, noteY, this.width, this.height);
-                const isLink = isValidUrl(this.text);
-                ctx.fillStyle = isLink ? COLORS.link : COLORS.line;
-                this.wrapText(ctx, this.text, noteX + 8, noteY + 8, this.width - 24, 18);
-                const deleteIconX = noteX + this.width - 10;
-                const deleteIconY = noteY + 10;
-                const iconSize = 6;
-                ctx.beginPath();
-                ctx.moveTo(deleteIconX - iconSize, deleteIconY - iconSize);
-                ctx.lineTo(deleteIconX + iconSize, deleteIconY + iconSize);
-                ctx.moveTo(deleteIconX + iconSize, deleteIconY - iconSize);
-                ctx.lineTo(deleteIconX - iconSize, deleteIconY + iconSize);
-                ctx.strokeStyle = '#6B7280';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                if (isLink) {
-                    const linkIconX = noteX + this.width - 12;
-                    const linkIconY = noteY + this.height - 12;
-                    ctx.strokeStyle = COLORS.link;
-                    ctx.lineWidth = 1.5;
-                    ctx.strokeRect(linkIconX, linkIconY, 6, 6);
-                    ctx.beginPath();
-                    ctx.moveTo(linkIconX + 3, linkIconY);
-                    ctx.lineTo(linkIconX + 9, linkIconY - 6);
-                    ctx.moveTo(linkIconX + 4, linkIconY - 6);
-                    ctx.lineTo(linkIconX + 9, linkIconY - 6);
-                    ctx.lineTo(linkIconX + 9, linkIconY - 1);
-                    ctx.stroke();
-                }
-                
-                const resizeHandleX = noteX + this.width;
-                const resizeHandleY = noteY + this.height;
-                ctx.fillStyle = '#9CA3AF';
-                ctx.beginPath();
-                ctx.moveTo(resizeHandleX, resizeHandleY - 10);
-                ctx.lineTo(resizeHandleX - 10, resizeHandleY);
-                ctx.lineTo(resizeHandleX, resizeHandleY);
-                ctx.closePath();
-                ctx.fill();
-            }
-            
-            isBodyClicked(mouseX, mouseY, parentPoint) { // Expects world coordinates
-                const noteX = parentPoint.x + this.offsetX;
-                const noteY = parentPoint.y + this.offsetY;
-                return mouseX > noteX && mouseX < noteX + this.width &&
-                       mouseY > noteY && mouseY < noteY + this.height;
-            }
 
-            isDeleteClicked(mouseX, mouseY, parentPoint) { // Expects world coordinates
-                const noteX = parentPoint.x + this.offsetX;
-                const noteY = parentPoint.y + this.offsetY;
-                const deleteIconX = noteX + this.width - 10;
-                const deleteIconY = noteY + 10;
-                const hitArea = 10;
-                return mouseX > deleteIconX - hitArea && mouseX < deleteIconX + hitArea &&
-                       mouseY > deleteIconY - hitArea && mouseY < deleteIconY + hitArea;
-            }
-            
-            isLinkIconClicked(mouseX, mouseY, parentPoint) { // Expects world coordinates
-                const noteX = parentPoint.x + this.offsetX;
-                const noteY = parentPoint.y + this.offsetY;
-                const linkIconX = noteX + this.width - 12;
-                const linkIconY = noteY + this.height - 12;
-                const hitArea = 12;
-                return mouseX > linkIconX - hitArea && mouseX < linkIconX + hitArea &&
-                       mouseY > linkIconY - hitArea && mouseY < linkIconY + hitArea;
-            }
 
-            isResizeClicked(mouseX, mouseY, parentPoint) { // Expects world coordinates
-                const noteX = parentPoint.x + this.offsetX;
-                const noteY = parentPoint.y + this.offsetY;
-                const resizeHandleX = noteX + this.width;
-                const resizeHandleY = noteY + this.height;
-                const hitArea = 15;
-                return mouseX > resizeHandleX - hitArea && mouseX < resizeHandleX + hitArea &&
-                       mouseY > resizeHandleY - hitArea && mouseY < resizeHandleY + hitArea;
-            }
-        }
-        
-        // --- CORE DRAWING FUNCTIONS ---
-        function resizeCanvas() {
-            canvas.width = parentContainer.clientWidth;
-            canvas.height = parentContainer.clientHeight;
-            draw();
-        }
+    </div>
 
-        function draw() {
-            if (!ctx) return;
-            // The canvas background is handled by the parent div's style.
-            // We just need to clear the canvas for redrawing.
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            ctx.save();
-            ctx.translate(-camera.x, -camera.y);
 
-            // Draw lines first
-            snakes.forEach(snakeObj => {
-                if (snakeObj.path && snakeObj.path.length > 1) {
-                    ctx.beginPath();
-                    ctx.moveTo(snakeObj.path[0].x, snakeObj.path[0].y);
-                    for (let i = 1; i < snakeObj.path.length; i++) {
-                        ctx.lineTo(snakeObj.path[i].x, snakeObj.path[i].y);
-                    }
-                    ctx.strokeStyle = COLORS.line;
-                    ctx.lineWidth = 4;
-                    ctx.stroke();
-                }
-            });
-            
-            notes.forEach(note => {
-                const parentPoint = points.find(p => p.id === note.attachedPointId);
-                if (parentPoint) note.draw(parentPoint);
-            });
-            
-            points.forEach(p => {
-                let angle = 0;
-                const ownerSnake = snakes.find(s => s.path && s.path.some(sp => sp.id === p.id));
-                if (p.type === 'head' && ownerSnake && ownerSnake.path.length > 1) {
-                    const nextPoint = ownerSnake.path[1];
-                    angle = Math.atan2(nextPoint.y - p.y, nextPoint.x - p.x);
-                }
-                p.draw(angle);
-            });
-            
-            snakes.forEach(snakeObj => {
-                if (snakeObj.path && snakeObj.path.length > 0) {
-                    const head = snakeObj.path[0];
-                    ctx.fillStyle = COLORS.line; // Use line color for label for contrast
-                    ctx.font = LABEL_FONT;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'bottom';
-                    ctx.fillText(snakeObj.name, head.x, head.y - POINT_RADIUS - 5);
-                }
-            });
 
-            ctx.restore();
-        }
+    <!-- Firebase SDK -->
 
-        function getPointAt(mouseX, mouseY) { // Expects world coordinates
-            for (let i = points.length - 1; i >= 0; i--) {
-                if (points[i].isClicked(mouseX, mouseY)) return points[i];
-            }
-            return null;
-        }
+    <script type="module">
 
-        // --- EVENT HANDLERS ---
-        function handleMouseDown(e) {
-            e.preventDefault();
-            const worldMouse = screenToWorld(e.offsetX, e.offsetY);
-            if (e.button !== 0) return;
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 
-            const clickedPoint = getPointAt(worldMouse.x, worldMouse.y);
-            if (clickedPoint) {
-                draggedPoint = clickedPoint;
-                isDraggingPoint = true;
-                canvas.style.cursor = 'grabbing';
-                return;
-            }
-            
-            for (let i = notes.length - 1; i >= 0; i--) {
-                const note = notes[i];
-                const parentPoint = points.find(p => p.id === note.attachedPointId);
-                if (parentPoint) {
-                    if (note.isDeleteClicked(worldMouse.x, worldMouse.y, parentPoint)) {
-                        deleteDoc(doc(notesCollection, note.id));
-                        return;
-                    }
-                    if (note.isResizeClicked(worldMouse.x, worldMouse.y, parentPoint)) {
-                        isResizingNote = true;
-                        resizedNote = note;
-                        resizedNote.originalWidth = note.width;
-                        resizedNote.originalHeight = note.height;
-                        dragStart = { x: e.offsetX, y: e.offsetY };
-                        canvas.style.cursor = 'nwse-resize';
-                        return;
-                    }
-                    if (isValidUrl(note.text) && note.isLinkIconClicked(worldMouse.x, worldMouse.y, parentPoint)) {
-                        window.open(note.text, '_blank');
-                        return;
-                    }
-                    if (note.isBodyClicked(worldMouse.x, worldMouse.y, parentPoint)) {
-                        createNoteInput(note);
-                        return;
-                    }
-                }
-            }
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-            for (let i = snakes.length - 1; i >= 0; i--) {
-                const snake = snakes[i];
-                if (!snake.path || snake.path.length === 0) continue;
-                const head = snake.path[0];
-                ctx.font = LABEL_FONT;
-                const metrics = ctx.measureText(snake.name);
-                const labelX = head.x - metrics.width / 2;
-                const labelY = head.y - POINT_RADIUS - 5 - LABEL_HEIGHT;
-                if (worldMouse.x > labelX && worldMouse.x < labelX + metrics.width && worldMouse.y > labelY && worldMouse.y < labelY + LABEL_HEIGHT) {
-                    draggedSnake = snake;
-                    isDraggingSnake = true;
-                    dragStart = { x: e.offsetX, y: e.offsetY };
-                    draggedSnake.path.forEach(p => { p.originalX = p.x; p.originalY = p.y; });
-                    canvas.style.cursor = 'move';
-                    return;
-                }
-            }
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-            isPanning = true;
-            dragStart = { x: e.offsetX, y: e.offsetY };
-            canvas.style.cursor = 'grabbing';
-        }
-        
-        async function handleContextMenu(e) {
-            e.preventDefault();
-            const worldMouse = screenToWorld(e.offsetX, e.offsetY);
-            const clickedPoint = getPointAt(worldMouse.x, worldMouse.y);
-            if(clickedPoint) {
-                const existingNote = notes.find(n => n.attachedPointId === clickedPoint.id);
-                if(existingNote){
-                    createNoteInput(existingNote);
-                } else {
-                    const newNoteData = {
-                        text: "Type something...",
-                        attachedPointId: clickedPoint.id,
-                        width: 160,
-                        height: 100,
-                        offsetX: 40,
-                        offsetY: -50,
-                    };
-                    try {
-                        const docRef = await addDoc(notesCollection, newNoteData);
-                        const tempNote = new Note(newNoteData.text, newNoteData.attachedPointId);
-                        tempNote.id = docRef.id;
-                        createNoteInput(tempNote);
-                    } catch (error) {
-                        console.error("Error creating note:", error);
-                    }
-                }
-            }
-        }
+        
 
-        function handleMouseMove(e) {
-            e.preventDefault();
-            const worldMouse = screenToWorld(e.offsetX, e.offsetY);
-            
-            if (isPanning) {
-                const dx = e.offsetX - dragStart.x;
-                const dy = e.offsetY - dragStart.y;
-                camera.x -= dx;
-                camera.y -= dy;
-                dragStart = { x: e.offsetX, y: e.offsetY };
-                draw();
-                return;
-            }
+        // --- SETUP ---
 
-            if (isResizingNote && resizedNote) {
-                const deltaX = e.offsetX - dragStart.x;
-                const deltaY = e.offsetY - dragStart.y;
-                resizedNote.width = Math.max(MIN_NOTE_WIDTH, resizedNote.originalWidth + deltaX);
-                resizedNote.height = Math.max(MIN_NOTE_HEIGHT, resizedNote.originalHeight + deltaY);
-                draw();
-            } else if (isDraggingPoint && draggedPoint) {
-                let currentX = worldMouse.x, currentY = worldMouse.y;
-                let ownerSnake = null, pointIndexInSnake = -1;
-                for (const snake of snakes) {
-                    if(!snake.path) continue;
-                    const index = snake.path.findIndex(p => p.id === draggedPoint.id);
-                    if (index > -1) {
-                        ownerSnake = snake; pointIndexInSnake = index; break;
-                    }
-                }
-                
-                if (ownerSnake) {
-                     const ownerSnakePath = ownerSnake.path;
-                     const prev = ownerSnakePath[pointIndexInSnake - 1], next = ownerSnakePath[pointIndexInSnake + 1];
-                     if (prev) {
-                         const dist = Math.hypot(currentX - prev.x, currentY - prev.y);
-                         if (dist > STRETCH_LIMIT) {
-                             const angle = Math.atan2(currentY - prev.y, currentX - prev.x);
-                             currentX = prev.x + STRETCH_LIMIT * Math.cos(angle);
-                             currentY = prev.y + STRETCH_LIMIT * Math.sin(angle);
-                         }
-                     }
-                     if (next) {
-                         const dist = Math.hypot(currentX - next.x, currentY - next.y);
-                         if (dist > STRETCH_LIMIT) {
-                             const angle = Math.atan2(currentY - next.y, currentX - next.x);
-                             currentX = next.x + STRETCH_LIMIT * Math.cos(angle);
-                             currentY = next.y + STRETCH_LIMIT * Math.sin(angle);
-                         }
-                     }
-                }
-                draggedPoint.x = currentX;
-                draggedPoint.y = currentY;
-                draw();
-            } else if (isDraggingSnake && draggedSnake) {
-                const deltaX = e.offsetX - dragStart.x, deltaY = e.offsetY - dragStart.y;
-                draggedSnake.path.forEach(p => { p.x = p.originalX + deltaX; p.y = p.originalY + deltaY; });
-                draw();
-            }
-        }
+        const canvas = document.getElementById('whiteboard');
 
-        function handleMouseUp(e) {
-            e.preventDefault();
+        const ctx = canvas.getContext('2d');
 
-            if (isDraggingPoint && draggedPoint) {
-                updateDoc(doc(pointsCollection, draggedPoint.id), { x: draggedPoint.x, y: draggedPoint.y });
-            }
-            if (isDraggingSnake && draggedSnake) {
-                const batch = writeBatch(db);
-                draggedSnake.path.forEach(p => {
-                    const pointRef = doc(pointsCollection, p.id);
-                    batch.update(pointRef, { x: p.x, y: p.y });
-                });
-                batch.commit();
-            }
-            if (isResizingNote && resizedNote) {
-                updateDoc(doc(notesCollection, resizedNote.id), { width: resizedNote.width, height: resizedNote.height });
-            }
+        const parentContainer = canvas.parentElement;
 
-            isDraggingPoint = isDraggingSnake = isResizingNote = isPanning = false;
-            draggedPoint = draggedSnake = resizedNote = null;
-            canvas.style.cursor = 'grab';
-        }
-        
-        // --- UI/CONTROL LOGIC ---
-        function setTheme(themeName) {
-            currentTheme = themeName;
-            COLORS = THEMES[themeName];
-            const isWhite = themeName === 'white';
 
-            // Update background colors
-            document.body.style.backgroundColor = COLORS.bodyBg;
-            parentContainer.style.backgroundColor = COLORS.bg;
 
-            // Update button styles
-            themeWhiteBtn.classList.toggle('bg-blue-500', isWhite);
-            themeWhiteBtn.classList.toggle('text-white', isWhite);
-            themeWhiteBtn.classList.toggle('bg-gray-200', !isWhite);
-            themeWhiteBtn.classList.toggle('text-gray-800', !isWhite);
+        // --- UI ELEMENTS ---
 
-            themeBlackBtn.classList.toggle('bg-gray-700', !isWhite);
-            themeBlackBtn.classList.toggle('text-white', !isWhite);
-            themeBlackBtn.classList.toggle('bg-gray-200', isWhite);
-            themeBlackBtn.classList.toggle('text-gray-800', isWhite);
+        const controlsPanel = document.getElementById('controls');
 
-            // Update control panel text colors
-            controlsPanel.querySelectorAll('h2, h3').forEach(el => {
-                el.style.color = COLORS.controlsText;
-            });
+        const createSnakeBtn = document.getElementById('createSnakeBtn');
 
-            draw();
-        }
+        const clearBoardBtn = document.getElementById('clearBoardBtn');
 
-        function showConfirmationModal(message, onConfirm) {
-            document.getElementById('confirmation-modal-overlay')?.remove();
-            const overlay = document.createElement('div');
-            overlay.id = 'confirmation-modal-overlay';
-            overlay.className = 'fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4';
-            const panel = document.createElement('div');
-            panel.className = 'modal-panel bg-white rounded-lg shadow-xl p-6 w-full max-w-sm transform opacity-0 translate-y-4';
-            const text = document.createElement('p');
-            text.className = 'text-gray-800 mb-6 text-lg';
-            text.textContent = message;
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'flex justify-end space-x-3';
-            const cancelBtn = document.createElement('button');
-            cancelBtn.textContent = 'Cancel';
-            cancelBtn.className = 'px-5 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400';
-            const confirmBtn = document.createElement('button');
-            confirmBtn.textContent = 'Clear Board';
-            confirmBtn.className = 'px-5 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400';
-            btnContainer.append(cancelBtn, confirmBtn);
-            panel.append(text, btnContainer);
-            overlay.appendChild(panel);
-            document.body.appendChild(overlay);
-            setTimeout(() => {
-                panel.classList.remove('opacity-0', 'translate-y-4');
-                panel.classList.add('opacity-100', 'translate-y-0');
-            }, 10);
-            const closeModal = () => {
-                panel.classList.add('opacity-0');
-                setTimeout(() => overlay.remove(), 200);
-            };
-            cancelBtn.addEventListener('click', closeModal);
-            confirmBtn.addEventListener('click', () => {
-                onConfirm();
-                closeModal();
-            });
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) closeModal();
-            });
-        }
+        const snakeControlsContainer = document.getElementById('snakeControlsContainer');
 
-        function createNoteInput(note) {
-            document.getElementById('note-editor')?.remove();
-            const parentPoint = points.find(p => p.id === note.attachedPointId);
-            if (!parentPoint) return;
-            
-            const screenPos = worldToScreen(parentPoint.x + note.offsetX, parentPoint.y + note.offsetY);
-            
-            const textarea = document.createElement('textarea');
-            textarea.id = 'note-editor';
-            textarea.value = note.text === "Type something..." ? "" : note.text;
-            textarea.style.position = 'absolute';
-            textarea.style.left = `${canvas.offsetLeft + screenPos.x}px`;
-            textarea.style.top = `${canvas.offsetTop + screenPos.y}px`;
-            textarea.style.width = `${note.width}px`;
-            textarea.style.height = `${note.height}px`;
-            textarea.style.zIndex = '30';
-            textarea.className = 'p-2 border-2 border-blue-500 rounded-md shadow-lg focus:outline-none bg-yellow-50';
-            parentContainer.appendChild(textarea);
-            textarea.focus();
-            textarea.select();
-            const finishEditing = () => {
-                if(document.body.contains(textarea)) {
-                    const newText = textarea.value.trim() === '' ? 'Type something...' : textarea.value;
-                    if (note.text !== newText) {
-                         updateDoc(doc(notesCollection, note.id), { text: newText });
-                    }
-                    parentContainer.removeChild(textarea);
-                }
-            };
-            textarea.addEventListener('blur', finishEditing);
-            textarea.addEventListener('keydown', e => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEditing(); } 
-                else if (e.key === 'Escape') { finishEditing(); }
-            });
-        }
+        const userInfoDiv = document.getElementById('userInfo');
 
-        async function removeSnake(snakeId) {
-            const snakeToRemove = snakes.find(s => s.id === snakeId);
-            if (!snakeToRemove || !snakeToRemove.path) return;
-            const batch = writeBatch(db);
-            batch.delete(doc(snakesCollection, snakeId));
-            const pointIdsToRemove = new Set(snakeToRemove.path.map(p => p.id));
-            pointIdsToRemove.forEach(pointId => {
-                batch.delete(doc(pointsCollection, pointId));
-            });
-            const notesSnapshot = await getDocs(notesCollection);
-            notesSnapshot.forEach(noteDoc => {
-                if (pointIdsToRemove.has(noteDoc.data().attachedPointId)) {
-                    batch.delete(noteDoc.ref);
-                }
-            });
-            await batch.commit();
-        }
-        
-        async function addBodyPointToSnake(snakeId) {
-            const snake = snakes.find(s => s.id === snakeId);
-            if (!snake || !snake.path || snake.path.length < 2) return;
-            const beforeTail = snake.path[snake.path.length - 2];
-            const tail = snake.path[snake.path.length - 1];
-            const newPointData = {
-                x: (beforeTail.x + tail.x) / 2,
-                y: (beforeTail.y + tail.y) / 2,
-                type: 'body'
-            };
-            const newPointRef = await addDoc(pointsCollection, newPointData);
-            const newPathArray = snake.path.map(p => p.id);
-            newPathArray.splice(newPathArray.length - 1, 0, newPointRef.id);
-            await updateDoc(doc(snakesCollection, snakeId), { path: newPathArray });
-        }
+        
 
-        function showRenameInput(menuContainer) {
-            const snakeId = menuContainer.dataset.id;
-            const snake = snakes.find(s => s.id === snakeId);
-            const toggleButton = menuContainer.querySelector('button');
-            const dropdownContent = menuContainer.querySelector('.dropdown-content');
-            dropdownContent.classList.add('hidden');
-            toggleButton.style.display = 'none';
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = snake.name;
-            input.className = 'w-full px-3 py-2 bg-white border border-blue-400 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400';
-            menuContainer.insertBefore(input, toggleButton);
-            input.focus();
-            input.select();
-            const finishRename = () => {
-                const newName = input.value.trim();
-                if (newName && newName !== snake.name) {
-                    updateDoc(doc(snakesCollection, snakeId), { name: newName });
-                }
-                menuContainer.removeChild(input);
-                toggleButton.style.display = 'block';
-            };
-            input.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') finishRename(); });
-            input.addEventListener('blur', finishRename);
-        }
+        // --- GLOBAL & FIRESTORE STATE ---
 
-        function createSnakeDropdownMenu(snake) {
-            const menuContainer = document.createElement('div');
-            menuContainer.className = 'relative snake-menu';
-            menuContainer.dataset.id = snake.id;
-            const toggleButton = document.createElement('button');
-            toggleButton.innerHTML = `${snake.name} Actions <span class="text-xs">▼</span>`;
-            toggleButton.className = 'w-full text-left px-3 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400';
-            const dropdownContent = document.createElement('div');
-            dropdownContent.className = 'dropdown-content absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg p-2 space-y-1 hidden z-10';
-            dropdownContent.innerHTML = `<button data-action="rename" class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md">Rename</button><button data-action="add-body" class="w-full text-left px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50 rounded-md">Add Body Point</button><div class="border-t my-1"></div><button data-action="remove" class="w-full text-left px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-md">Remove Snake</button>`;
-            menuContainer.append(toggleButton, dropdownContent);
-            snakeControlsContainer.appendChild(menuContainer);
-        }
+        let db, auth;
 
-        snakeControlsContainer.addEventListener('click', e => {
-            const button = e.target.closest('button');
-            if (!button) return;
-            const menuContainer = e.target.closest('.snake-menu');
-            if (!menuContainer) return;
-            if (button === menuContainer.querySelector('button')) {
-                menuContainer.querySelector('.dropdown-content').classList.toggle('hidden');
-                return;
-            }
-            const action = button.dataset.action;
-            if (action) {
-                const snakeId = menuContainer.dataset.id;
-                if (action === 'rename') showRenameInput(menuContainer);
-                else if (action === 'add-body') addBodyPointToSnake(snakeId);
-                else if (action === 'remove') removeSnake(snakeId);
-            }
-        });
+        let snakesCollection, pointsCollection, notesCollection;
 
-        createSnakeBtn.addEventListener('click', async () => {
-            if (!db) {
-                alert('App is in offline mode. Cannot create new items.');
-                return;
-            }
-            const batch = writeBatch(db);
-            const startX = snakes.length === 0 
-                ? controlsPanel.offsetWidth + 80 + camera.x 
-                : Math.max(...snakes.map(s => s.path[0].x)) + 150;
-            const headData = { x: startX, y: 100 + camera.y, type: 'head' };
-            const bodyData = { x: startX, y: 200 + camera.y, type: 'body' };
-            const tailData = { x: startX, y: 300 + camera.y, type: 'tail' };
-            const headRef = doc(collection(db, pointsCollection.path));
-            const bodyRef = doc(collection(db, pointsCollection.path));
-            const tailRef = doc(collection(db, pointsCollection.path));
-            batch.set(headRef, headData);
-            batch.set(bodyRef, bodyData);
-            batch.set(tailRef, tailData);
-            const snakeData = {
-                name: `Snake ${snakes.length + 1}`,
-                path: [headRef.id, bodyRef.id, tailRef.id]
-            };
-            const snakeRef = doc(collection(db, snakesCollection.path));
-            batch.set(snakeRef, snakeData);
-            await batch.commit();
-        });
+        
 
-        async function clearCollection(collectionRef) {
-             if (!db) return;
-             const batch = writeBatch(db);
-             const snapshot = await getDocs(collectionRef);
-             snapshot.forEach(doc => batch.delete(doc.ref));
-             await batch.commit();
-        }
+        // Local state, populated by Firestore
 
-        clearBoardBtn.addEventListener('click', () => {
-            if (document.getElementById('note-editor') || document.getElementById('confirmation-modal-overlay')) return;
-            showConfirmationModal('Are you sure you want to clear the entire board?', async () => {
-                await Promise.all([
-                    clearCollection(snakesCollection),
-                    clearCollection(pointsCollection),
-                    clearCollection(notesCollection)
-                ]);
-            });
-        });
+        let snakes = []; 
 
-        // --- INITIALIZATION ---
-        async function initFirebase() {
-            let firebaseConfig;
-            try {
-                // This will fail if __firebase_config is not defined or is not valid JSON
-                firebaseConfig = JSON.parse(__firebase_config);
-            } catch (error) {
-                console.warn("Firebase config not found or invalid. Running in offline mode.");
-                userInfoDiv.innerHTML = '<strong>Offline Mode</strong>';
-                // Disable buttons that require Firebase
-                createSnakeBtn.disabled = true;
-                createSnakeBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                clearBoardBtn.disabled = true;
-                clearBoardBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                return; // Stop the initialization process
-            }
-            
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                setLogLevel('error');
+        let points = []; 
 
-                const publicPath = `/artifacts/${appId}/public/data`;
-                snakesCollection = collection(db, `${publicPath}/snakes`);
-                pointsCollection = collection(db, `${publicPath}/points`);
-                notesCollection = collection(db, `${publicPath}/notes`);
+        let notes = [];
 
-                onAuthStateChanged(auth, user => {
-                    if (user) {
-                        userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`;
-                        setupRealtimeListeners();
-                    } else {
-                        userInfoDiv.textContent = 'Authenticating...';
-                    }
-                });
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Firebase Initialization or Auth Failed:", error);
-                userInfoDiv.innerHTML = `<span class="text-red-500 font-bold">Connection Failed.</span>`;
-            }
-        }
-        
-        function processAndDraw(localSnakes, localPoints, localNotes) {
-            points = localPoints.map(pData => {
-                const point = new Point(pData.x, pData.y, pData.type);
-                point.id = pData.id;
-                return point;
-            });
-            notes = localNotes.map(nData => {
-                const note = new Note(nData.text, nData.attachedPointId);
-                note.id = nData.id;
-                note.width = nData.width;
-                note.height = nData.height;
-                note.offsetX = nData.offsetX;
-                note.offsetY = nData.offsetY;
-                return note;
-            });
-            const pointMap = new Map(points.map(p => [p.id, p]));
-            snakes = localSnakes.map(sData => {
-                const snake = { ...sData };
-                snake.path = sData.path ? sData.path.map(pointId => pointMap.get(pointId)).filter(p => p) : [];
-                return snake;
-            });
-            snakeControlsContainer.innerHTML = '';
-            if (snakes.length > 0) {
-                 snakeControlsContainer.classList.add('pt-2', 'border-t');
-                 snakes.forEach(createSnakeDropdownMenu);
-            } else {
-                 snakeControlsContainer.classList.remove('pt-2', 'border-t');
-            }
-            draw();
-        }
 
-        function setupRealtimeListeners() {
-            if (!db) return; // Don't set up listeners in offline mode
-            let localSnakes = [];
-            let localPoints = [];
-            let localNotes = [];
-            onSnapshot(snakesCollection, (snapshot) => {
-                localSnakes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                processAndDraw(localSnakes, localPoints, localNotes);
-            }, (error) => console.error("Error listening to snakes:", error));
-            onSnapshot(pointsCollection, (snapshot) => {
-                localPoints = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                processAndDraw(localSnakes, localPoints, localNotes);
-            }, (error) => console.error("Error listening to points:", error));
-            onSnapshot(notesCollection, (snapshot) => {
-                localNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                processAndDraw(localSnakes, localPoints, localNotes);
-            }, (error) => console.error("Error listening to notes:", error));
-        }
+        // Local UI state
 
-        function init() {
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            canvas.addEventListener('mousedown', handleMouseDown);
-            canvas.addEventListener('mousemove', handleMouseMove);
-            canvas.addEventListener('mouseup', handleMouseUp);
-            canvas.addEventListener('mouseout', handleMouseUp);
-            canvas.addEventListener('contextmenu', handleContextMenu);
-            
-            themeWhiteBtn.addEventListener('click', () => setTheme('white'));
-            themeBlackBtn.addEventListener('click', () => setTheme('black'));
+        let draggedPoint = null;
 
-            setTheme('white'); // Set initial theme
-            initFirebase();
-        }
+        let isDraggingPoint = false;
 
-        init();
-    </script>
+        let draggedSnake = null;
+
+        let isDraggingSnake = false;
+
+        let resizedNote = null;
+
+        let isResizingNote = false;
+
+        let dragStart = { x: 0, y: 0 };
+
+        
+
+        // --- CONSTANTS ---
+
+        const POINT_RADIUS = 12;
+
+        const STRETCH_LIMIT = 300; 
+
+        const COLORS = {
+
+            head: '#10B981', body: '#0EA5E9', tail: '#EF4444',
+
+            line: '#374151', noteBg: '#FEF9C3', noteBorder: '#FDE047', link: '#0000EE'
+
+        };
+
+        const LABEL_FONT = 'bold 16px Inter';
+
+        const LABEL_HEIGHT = 16;
+
+        const NOTE_FONT = '14px Inter';
+
+        const MIN_NOTE_WIDTH = 80;
+
+        const MIN_NOTE_HEIGHT = 40;
+
+
+
+        // --- UTILITY FUNCTIONS ---
+
+        function isValidUrl(string) {
+
+            try {
+
+                const url = new URL(string);
+
+                return url.protocol === "http:" || url.protocol === "https:";
+
+            } catch (_) {
+
+                return false;  
+
+            }
+
+        }
+
+
+
+        // --- CLASSES ---
+
+        class Point {
+
+            constructor(x, y, type) {
+
+                // ID is now assigned by Firestore
+
+                this.id = null;
+
+                this.x = x;
+
+                this.y = y;
+
+                this.type = type;
+
+                this.originalX = 0;
+
+                this.originalY = 0;
+
+            }
+
+            draw(angle = 0) {
+
+                // Drawing logic remains the same
+
+                if (this.type === 'head') {
+
+                    ctx.save();
+
+                    ctx.translate(this.x, this.y);
+
+                    ctx.rotate(angle);
+
+                    ctx.fillStyle = COLORS.head;
+
+                    ctx.beginPath();
+
+                    ctx.ellipse(0, 0, POINT_RADIUS * 1.2, POINT_RADIUS * 0.9, 0, 0, Math.PI * 2);
+
+                    ctx.fill();
+
+                    ctx.fillStyle = 'white';
+
+                    ctx.beginPath();
+
+                    ctx.arc(POINT_RADIUS * 0.5, -POINT_RADIUS * 0.4, 2, 0, Math.PI * 2);
+
+                    ctx.arc(POINT_RADIUS * 0.5, POINT_RADIUS * 0.4, 2, 0, Math.PI * 2);
+
+                    ctx.fill();
+
+                    ctx.fillStyle = 'black';
+
+                    ctx.beginPath();
+
+                    ctx.arc(POINT_RADIUS * 0.6, -POINT_RADIUS * 0.4, 1, 0, Math.PI * 2);
+
+                    ctx.arc(POINT_RADIUS * 0.6, POINT_RADIUS * 0.4, 1, 0, Math.PI * 2);
+
+                    ctx.fill();
+
+                    ctx.restore();
+
+                } else if (this.type === 'tail') {
+
+                    ctx.fillStyle = COLORS.tail;
+
+                    ctx.beginPath();
+
+                    ctx.moveTo(this.x, this.y + POINT_RADIUS);
+
+                    ctx.lineTo(this.x - POINT_RADIUS, this.y - POINT_RADIUS / 2);
+
+                    ctx.lineTo(this.x + POINT_RADIUS, this.y - POINT_RADIUS / 2);
+
+                    ctx.closePath();
+
+                    ctx.fill();
+
+                } else {
+
+                    ctx.beginPath();
+
+                    ctx.arc(this.x, this.y, POINT_RADIUS, 0, Math.PI * 2);
+
+                    ctx.fillStyle = COLORS[this.type];
+
+                    ctx.fill();
+
+                    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+
+                    ctx.lineWidth = 2;
+
+                    ctx.stroke();
+
+                }
+
+            }
+
+            isClicked(mouseX, mouseY) {
+
+                const dist = Math.hypot(mouseX - this.x, mouseY - this.y);
+
+                return dist < POINT_RADIUS * 1.2;
+
+            }
+
+        }
+
+
+
+        class Note {
+
+            constructor(text, attachedPointId) {
+
+                // ID is now assigned by Firestore
+
+                this.id = null;
+
+                this.text = text;
+
+                this.attachedPointId = attachedPointId;
+
+                this.width = 160;
+
+                this.height = 100;
+
+                this.originalWidth = 0;
+
+                this.originalHeight = 0;
+
+                this.offsetX = 40;
+
+                this.offsetY = -50;
+
+            }
+
+
+
+            // Drawing and interaction logic remains the same
+
+            wrapText(context, text, x, y, maxWidth, lineHeight) {
+
+                const words = text.split(' ');
+
+                let line = '';
+
+                context.font = NOTE_FONT;
+
+                context.textAlign = 'left';
+
+                context.textBaseline = 'top';
+
+                for(let n = 0; n < words.length; n++) {
+
+                    const testLine = line + words[n] + ' ';
+
+                    const metrics = context.measureText(testLine);
+
+                    if (metrics.width > maxWidth && n > 0) {
+
+                        context.fillText(line, x, y);
+
+                        line = words[n] + ' ';
+
+                        y += lineHeight;
+
+                    } else {
+
+                        line = testLine;
+
+                    }
+
+                }
+
+                context.fillText(line, x, y);
+
+            }
+
+            
+
+            draw(parentPoint) {
+
+                const noteX = parentPoint.x + this.offsetX;
+
+                const noteY = parentPoint.y + this.offsetY;
+
+                ctx.beginPath();
+
+                ctx.moveTo(parentPoint.x, parentPoint.y);
+
+                ctx.lineTo(noteX, noteY + this.height / 2);
+
+                ctx.strokeStyle = '#9CA3AF';
+
+                ctx.lineWidth = 2;
+
+                ctx.stroke();
+
+                ctx.fillStyle = COLORS.noteBg;
+
+                ctx.strokeStyle = COLORS.noteBorder;
+
+                ctx.lineWidth = 1.5;
+
+                ctx.fillRect(noteX, noteY, this.width, this.height);
+
+                ctx.strokeRect(noteX, noteY, this.width, this.height);
+
+                const isLink = isValidUrl(this.text);
+
+                ctx.fillStyle = isLink ? COLORS.link : COLORS.line;
+
+                this.wrapText(ctx, this.text, noteX + 8, noteY + 8, this.width - 24, 18); // Adjust wrap width for icons
+
+                const deleteIconX = noteX + this.width - 10;
+
+                const deleteIconY = noteY + 10;
+
+                const iconSize = 6;
+
+                ctx.beginPath();
+
+                ctx.moveTo(deleteIconX - iconSize, deleteIconY - iconSize);
+
+                ctx.lineTo(deleteIconX + iconSize, deleteIconY + iconSize);
+
+                ctx.moveTo(deleteIconX + iconSize, deleteIconY - iconSize);
+
+                ctx.lineTo(deleteIconX - iconSize, deleteIconY + iconSize);
+
+                ctx.strokeStyle = '#6B7280';
+
+                ctx.lineWidth = 2;
+
+                ctx.stroke();
+
+                if (isLink) {
+
+                    const linkIconX = noteX + this.width - 12;
+
+                    const linkIconY = noteY + this.height - 12;
+
+                    ctx.strokeStyle = COLORS.link;
+
+                    ctx.lineWidth = 1.5;
+
+                    ctx.strokeRect(linkIconX, linkIconY, 6, 6);
+
+                    ctx.beginPath();
+
+                    ctx.moveTo(linkIconX + 3, linkIconY);
+
+                    ctx.lineTo(linkIconX + 9, linkIconY - 6);
+
+                    ctx.moveTo(linkIconX + 4, linkIconY - 6);
+
+                    ctx.lineTo(linkIconX + 9, linkIconY - 6);
+
+                    ctx.lineTo(linkIconX + 9, linkIconY - 1);
+
+                    ctx.stroke();
+
+                }
+
+                
+
+                const resizeHandleX = noteX + this.width;
+
+                const resizeHandleY = noteY + this.height;
+
+                ctx.fillStyle = '#9CA3AF';
+
+                ctx.beginPath();
+
+                ctx.moveTo(resizeHandleX, resizeHandleY - 10);
+
+                ctx.lineTo(resizeHandleX - 10, resizeHandleY);
+
+                ctx.lineTo(resizeHandleX, resizeHandleY);
+
+                ctx.closePath();
+
+                ctx.fill();
+
+            }
+
+            
+
+            isBodyClicked(mouseX, mouseY, parentPoint) {
+
+                const noteX = parentPoint.x + this.offsetX;
+
+                const noteY = parentPoint.y + this.offsetY;
+
+                return mouseX > noteX && mouseX < noteX + this.width &&
+
+                       mouseY > noteY && mouseY < noteY + this.height;
+
+            }
+
+
+
+            isDeleteClicked(mouseX, mouseY, parentPoint) {
+
+                const noteX = parentPoint.x + this.offsetX;
+
+                const noteY = parentPoint.y + this.offsetY;
+
+                const deleteIconX = noteX + this.width - 10;
+
+                const deleteIconY = noteY + 10;
+
+                const hitArea = 10;
+
+                return mouseX > deleteIconX - hitArea && mouseX < deleteIconX + hitArea &&
+
+                       mouseY > deleteIconY - hitArea && mouseY < deleteIconY + hitArea;
+
+            }
+
+            
+
+            isLinkIconClicked(mouseX, mouseY, parentPoint) {
+
+                const noteX = parentPoint.x + this.offsetX;
+
+                const noteY = parentPoint.y + this.offsetY;
+
+                const linkIconX = noteX + this.width - 12;
+
+                const linkIconY = noteY + this.height - 12;
+
+                const hitArea = 12;
+
+                return mouseX > linkIconX - hitArea && mouseX < linkIconX + hitArea &&
+
+                       mouseY > linkIconY - hitArea && mouseY < linkIconY + hitArea;
+
+            }
+
+
+
+            isResizeClicked(mouseX, mouseY, parentPoint) {
+
+                const noteX = parentPoint.x + this.offsetX;
+
+                const noteY = parentPoint.y + this.offsetY;
+
+                const resizeHandleX = noteX + this.width;
+
+                const resizeHandleY = noteY + this.height;
+
+                const hitArea = 15;
+
+                return mouseX > resizeHandleX - hitArea && mouseX < resizeHandleX + hitArea &&
+
+                       mouseY > resizeHandleY - hitArea && mouseY < resizeHandleY + hitArea;
+
+            }
+
+        }
+
+        
+
+        // --- CORE DRAWING FUNCTIONS ---
+
+        function resizeCanvas() {
+
+            canvas.width = parentContainer.clientWidth;
+
+            canvas.height = parentContainer.clientHeight;
+
+            draw();
+
+        }
+
+
+
+        function draw() {
+
+            if (!ctx) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            
+
+            // Draw lines first
+
+            snakes.forEach(snakeObj => {
+
+                if (snakeObj.path && snakeObj.path.length > 1) {
+
+                    ctx.beginPath();
+
+                    ctx.moveTo(snakeObj.path[0].x, snakeObj.path[0].y);
+
+                    for (let i = 1; i < snakeObj.path.length; i++) {
+
+                        ctx.lineTo(snakeObj.path[i].x, snakeObj.path[i].y);
+
+                    }
+
+                    ctx.strokeStyle = COLORS.line;
+
+                    ctx.lineWidth = 4;
+
+                    ctx.stroke();
+
+                }
+
+            });
+
+            
+
+            // Draw notes
+
+            notes.forEach(note => {
+
+                const parentPoint = points.find(p => p.id === note.attachedPointId);
+
+                if (parentPoint) note.draw(parentPoint);
+
+            });
+
+            
+
+            // Draw points on top of lines
+
+            points.forEach(p => {
+
+                let angle = 0;
+
+                const ownerSnake = snakes.find(s => s.path && s.path.some(sp => sp.id === p.id));
+
+                if (p.type === 'head' && ownerSnake && ownerSnake.path.length > 1) {
+
+                    const nextPoint = ownerSnake.path[1];
+
+                    angle = Math.atan2(nextPoint.y - p.y, nextPoint.x - p.x);
+
+                }
+
+                p.draw(angle);
+
+            });
+
+            
+
+            // Draw labels last
+
+            snakes.forEach(snakeObj => {
+
+                if (snakeObj.path && snakeObj.path.length > 0) {
+
+                    const head = snakeObj.path[0];
+
+                    ctx.fillStyle = COLORS.line;
+
+                    ctx.font = LABEL_FONT;
+
+                    ctx.textAlign = 'center';
+
+                    ctx.textBaseline = 'bottom';
+
+                    ctx.fillText(snakeObj.name, head.x, head.y - POINT_RADIUS - 5);
+
+                }
+
+            });
+
+        }
+
+
+
+        function getPointAt(mouseX, mouseY) {
+
+            for (let i = points.length - 1; i >= 0; i--) {
+
+                if (points[i].isClicked(mouseX, mouseY)) return points[i];
+
+            }
+
+            return null;
+
+        }
+
+
+
+        // --- EVENT HANDLERS ---
+
+        function handleMouseDown(e) {
+
+            e.preventDefault();
+
+            const mouseX = e.offsetX;
+
+            const mouseY = e.offsetY;
+
+            if (e.button !== 0) return;
+
+
+
+            const clickedPoint = getPointAt(mouseX, mouseY);
+
+            if (clickedPoint) {
+
+                draggedPoint = clickedPoint;
+
+                isDraggingPoint = true;
+
+                canvas.style.cursor = 'grabbing';
+
+                return;
+
+            }
+
+            
+
+            for (let i = notes.length - 1; i >= 0; i--) {
+
+                const note = notes[i];
+
+                const parentPoint = points.find(p => p.id === note.attachedPointId);
+
+                if (parentPoint) {
+
+                    if (note.isDeleteClicked(mouseX, mouseY, parentPoint)) {
+
+                        deleteDoc(doc(notesCollection, note.id)); // Firestore delete
+
+                        return;
+
+                    }
+
+
+
+                    if (note.isResizeClicked(mouseX, mouseY, parentPoint)) {
+
+                        isResizingNote = true;
+
+                        resizedNote = note;
+
+                        resizedNote.originalWidth = note.width;
+
+                        resizedNote.originalHeight = note.height;
+
+                        dragStart = { x: mouseX, y: mouseY };
+
+                        canvas.style.cursor = 'nwse-resize';
+
+                        return;
+
+                    }
+
+                    
+
+                    if (isValidUrl(note.text) && note.isLinkIconClicked(mouseX, mouseY, parentPoint)) {
+
+                        window.open(note.text, '_blank');
+
+                        return;
+
+                    }
+
+
+
+                    if (note.isBodyClicked(mouseX, mouseY, parentPoint)) {
+
+                        createNoteInput(note);
+
+                        return;
+
+                    }
+
+                }
+
+            }
+
+
+
+            for (let i = snakes.length - 1; i >= 0; i--) {
+
+                const snake = snakes[i];
+
+                if (!snake.path || snake.path.length === 0) continue;
+
+                const head = snake.path[0];
+
+                ctx.font = LABEL_FONT;
+
+                const metrics = ctx.measureText(snake.name);
+
+                const labelX = head.x - metrics.width / 2;
+
+                const labelY = head.y - POINT_RADIUS - 5 - LABEL_HEIGHT;
+
+                if (mouseX > labelX && mouseX < labelX + metrics.width && mouseY > labelY && mouseY < labelY + LABEL_HEIGHT) {
+
+                    draggedSnake = snake;
+
+                    isDraggingSnake = true;
+
+                    dragStart = { x: mouseX, y: mouseY };
+
+                    draggedSnake.path.forEach(p => { p.originalX = p.x; p.originalY = p.y; });
+
+                    canvas.style.cursor = 'move';
+
+                    return;
+
+                }
+
+            }
+
+        }
+
+        
+
+        async function handleContextMenu(e) {
+
+            e.preventDefault();
+
+            const mouseX = e.offsetX;
+
+            const mouseY = e.offsetY;
+
+            const clickedPoint = getPointAt(mouseX, mouseY);
+
+            if(clickedPoint) {
+
+                const existingNote = notes.find(n => n.attachedPointId === clickedPoint.id);
+
+                if(existingNote){
+
+                    createNoteInput(existingNote);
+
+                } else {
+
+                    // Create note in Firestore
+
+                    const newNoteData = {
+
+                        text: "Type something...",
+
+                        attachedPointId: clickedPoint.id,
+
+                        width: 160,
+
+                        height: 100,
+
+                        offsetX: 40,
+
+                        offsetY: -50,
+
+                    };
+
+                    try {
+
+                        const docRef = await addDoc(notesCollection, newNoteData);
+
+                        // The onSnapshot listener will handle drawing it.
+
+                        // We can find the note locally now and open the editor
+
+                        const tempNote = new Note(newNoteData.text, newNoteData.attachedPointId);
+
+                        tempNote.id = docRef.id;
+
+                        createNoteInput(tempNote);
+
+                    } catch (error) {
+
+                        console.error("Error creating note:", error);
+
+                    }
+
+                }
+
+            }
+
+        }
+
+
+
+        function handleMouseMove(e) {
+
+            e.preventDefault();
+
+            const mouseX = e.offsetX;
+
+            const mouseY = e.offsetY;
+
+
+
+            if (isResizingNote && resizedNote) {
+
+                const deltaX = mouseX - dragStart.x;
+
+                const deltaY = mouseY - dragStart.y;
+
+                resizedNote.width = Math.max(MIN_NOTE_WIDTH, resizedNote.originalWidth + deltaX);
+
+                resizedNote.height = Math.max(MIN_NOTE_HEIGHT, resizedNote.originalHeight + deltaY);
+
+                draw(); // Draw locally for smooth feedback
+
+            } else if (isDraggingPoint && draggedPoint) {
+
+                // Dragging logic is local for performance, updates on mouse up
+
+                let currentX = e.offsetX, currentY = e.offsetY;
+
+                let ownerSnake = null, pointIndexInSnake = -1;
+
+                for (const snake of snakes) {
+
+                    if(!snake.path) continue;
+
+                    const index = snake.path.findIndex(p => p.id === draggedPoint.id);
+
+                    if (index > -1) {
+
+                        ownerSnake = snake; pointIndexInSnake = index; break;
+
+                    }
+
+                }
+
+                
+
+                if (ownerSnake) {
+
+                     const ownerSnakePath = ownerSnake.path;
+
+                     const prev = ownerSnakePath[pointIndexInSnake - 1], next = ownerSnakePath[pointIndexInSnake + 1];
+
+                     if (prev) {
+
+                         const dist = Math.hypot(currentX - prev.x, currentY - prev.y);
+
+                         if (dist > STRETCH_LIMIT) {
+
+                             const angle = Math.atan2(currentY - prev.y, currentX - prev.x);
+
+                             currentX = prev.x + STRETCH_LIMIT * Math.cos(angle);
+
+                             currentY = prev.y + STRETCH_LIMIT * Math.sin(angle);
+
+                         }
+
+                     }
+
+                     if (next) {
+
+                         const dist = Math.hypot(currentX - next.x, currentY - next.y);
+
+                         if (dist > STRETCH_LIMIT) {
+
+                             const angle = Math.atan2(currentY - next.y, currentX - next.x);
+
+                             currentX = next.x + STRETCH_LIMIT * Math.cos(angle);
+
+                             currentY = next.y + STRETCH_LIMIT * Math.sin(angle);
+
+                         }
+
+                     }
+
+                }
+
+                draggedPoint.x = currentX;
+
+                draggedPoint.y = currentY;
+
+                draw();
+
+            } else if (isDraggingSnake && draggedSnake) {
+
+                const deltaX = mouseX - dragStart.x, deltaY = mouseY - dragStart.y;
+
+                draggedSnake.path.forEach(p => { p.x = p.originalX + deltaX; p.y = p.originalY + deltaY; });
+
+                draw();
+
+            }
+
+        }
+
+
+
+        function handleMouseUp(e) {
+
+            e.preventDefault();
+
+
+
+            // On mouse up, write the final state to Firestore
+
+            if (isDraggingPoint && draggedPoint) {
+
+                updateDoc(doc(pointsCollection, draggedPoint.id), { x: draggedPoint.x, y: draggedPoint.y });
+
+            }
+
+            if (isDraggingSnake && draggedSnake) {
+
+                const batch = writeBatch(db);
+
+                draggedSnake.path.forEach(p => {
+
+                    const pointRef = doc(pointsCollection, p.id);
+
+                    batch.update(pointRef, { x: p.x, y: p.y });
+
+                });
+
+                batch.commit();
+
+            }
+
+            if (isResizingNote && resizedNote) {
+
+                updateDoc(doc(notesCollection, resizedNote.id), { width: resizedNote.width, height: resizedNote.height });
+
+            }
+
+
+
+            isDraggingPoint = isDraggingSnake = isResizingNote = false;
+
+            draggedPoint = draggedSnake = resizedNote = null;
+
+            canvas.style.cursor = 'grab';
+
+        }
+
+        
+
+        // --- UI/CONTROL LOGIC ---
+
+        function showConfirmationModal(message, onConfirm) {
+
+            // This function creates a modal and doesn't need changes for Firestore
+
+            document.getElementById('confirmation-modal-overlay')?.remove();
+
+            const overlay = document.createElement('div');
+
+            overlay.id = 'confirmation-modal-overlay';
+
+            overlay.className = 'fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4';
+
+            const panel = document.createElement('div');
+
+            panel.className = 'modal-panel bg-white rounded-lg shadow-xl p-6 w-full max-w-sm transform opacity-0 translate-y-4';
+
+            const text = document.createElement('p');
+
+            text.className = 'text-gray-800 mb-6 text-lg';
+
+            text.textContent = message;
+
+            const btnContainer = document.createElement('div');
+
+            btnContainer.className = 'flex justify-end space-x-3';
+
+            const cancelBtn = document.createElement('button');
+
+            cancelBtn.textContent = 'Cancel';
+
+            cancelBtn.className = 'px-5 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400';
+
+            const confirmBtn = document.createElement('button');
+
+            confirmBtn.textContent = 'Clear Board';
+
+            confirmBtn.className = 'px-5 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400';
+
+            btnContainer.append(cancelBtn, confirmBtn);
+
+            panel.append(text, btnContainer);
+
+            overlay.appendChild(panel);
+
+            document.body.appendChild(overlay);
+
+            setTimeout(() => {
+
+                panel.classList.remove('opacity-0', 'translate-y-4');
+
+                panel.classList.add('opacity-100', 'translate-y-0');
+
+            }, 10);
+
+            const closeModal = () => {
+
+                panel.classList.add('opacity-0');
+
+                setTimeout(() => overlay.remove(), 200);
+
+            };
+
+            cancelBtn.addEventListener('click', closeModal);
+
+            confirmBtn.addEventListener('click', () => {
+
+                onConfirm();
+
+                closeModal();
+
+            });
+
+            overlay.addEventListener('click', (e) => {
+
+                if (e.target === overlay) {
+
+                    closeModal();
+
+                }
+
+            });
+
+        }
+
+
+
+        function createNoteInput(note) {
+
+            document.getElementById('note-editor')?.remove();
+
+            const parentPoint = points.find(p => p.id === note.attachedPointId);
+
+            if (!parentPoint) return;
+
+            const textarea = document.createElement('textarea');
+
+            textarea.id = 'note-editor';
+
+            textarea.value = note.text === "Type something..." ? "" : note.text;
+
+            textarea.style.position = 'absolute';
+
+            textarea.style.left = `${canvas.offsetLeft + parentPoint.x + note.offsetX}px`;
+
+            textarea.style.top = `${canvas.offsetTop + parentPoint.y + note.offsetY}px`;
+
+            textarea.style.width = `${note.width}px`;
+
+            textarea.style.height = `${note.height}px`;
+
+            textarea.style.zIndex = '30';
+
+            textarea.className = 'p-2 border-2 border-blue-500 rounded-md shadow-lg focus:outline-none bg-yellow-50';
+
+            parentContainer.appendChild(textarea);
+
+            textarea.focus();
+
+            textarea.select();
+
+            const finishEditing = () => {
+
+                if(document.body.contains(textarea)) {
+
+                    const newText = textarea.value.trim() === '' ? 'Type something...' : textarea.value;
+
+                    if (note.text !== newText) {
+
+                         updateDoc(doc(notesCollection, note.id), { text: newText });
+
+                    }
+
+                    parentContainer.removeChild(textarea);
+
+                    // No need to call draw() here, onSnapshot will handle it.
+
+                }
+
+            };
+
+            textarea.addEventListener('blur', finishEditing);
+
+            textarea.addEventListener('keydown', e => {
+
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEditing(); } 
+
+                else if (e.key === 'Escape') { finishEditing(); }
+
+            });
+
+        }
+
+
+
+        async function removeSnake(snakeId) {
+
+            const snakeToRemove = snakes.find(s => s.id === snakeId);
+
+            if (!snakeToRemove || !snakeToRemove.path) return;
+
+
+
+            const batch = writeBatch(db);
+
+            
+
+            // Delete the snake document
+
+            batch.delete(doc(snakesCollection, snakeId));
+
+
+
+            // Delete all its points
+
+            const pointIdsToRemove = new Set(snakeToRemove.path.map(p => p.id));
+
+            pointIdsToRemove.forEach(pointId => {
+
+                batch.delete(doc(pointsCollection, pointId));
+
+            });
+
+
+
+            // Find and delete all associated notes
+
+            const notesSnapshot = await getDocs(notesCollection);
+
+            notesSnapshot.forEach(noteDoc => {
+
+                if (pointIdsToRemove.has(noteDoc.data().attachedPointId)) {
+
+                    batch.delete(noteDoc.ref);
+
+                }
+
+            });
+
+            
+
+            await batch.commit();
+
+        }
+
+        
+
+        async function addBodyPointToSnake(snakeId) {
+
+            const snake = snakes.find(s => s.id === snakeId);
+
+            if (!snake || !snake.path || snake.path.length < 2) return;
+
+            
+
+            const beforeTail = snake.path[snake.path.length - 2];
+
+            const tail = snake.path[snake.path.length - 1];
+
+            
+
+            // 1. Create the new point in Firestore
+
+            const newPointData = {
+
+                x: (beforeTail.x + tail.x) / 2,
+
+                y: (beforeTail.y + tail.y) / 2,
+
+                type: 'body'
+
+            };
+
+            const newPointRef = await addDoc(pointsCollection, newPointData);
+
+
+
+            // 2. Update the snake's path array in Firestore
+
+            const newPathArray = snake.path.map(p => p.id);
+
+            newPathArray.splice(newPathArray.length - 1, 0, newPointRef.id);
+
+            await updateDoc(doc(snakesCollection, snakeId), { path: newPathArray });
+
+        }
+
+
+
+        function showRenameInput(menuContainer) {
+
+            const snakeId = menuContainer.dataset.id;
+
+            const snake = snakes.find(s => s.id === snakeId);
+
+            const toggleButton = menuContainer.querySelector('button');
+
+            const dropdownContent = menuContainer.querySelector('.dropdown-content');
+
+            dropdownContent.classList.add('hidden');
+
+            toggleButton.style.display = 'none';
+
+            const input = document.createElement('input');
+
+            input.type = 'text';
+
+            input.value = snake.name;
+
+            input.className = 'w-full px-3 py-2 bg-white border border-blue-400 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400';
+
+            menuContainer.insertBefore(input, toggleButton);
+
+            input.focus();
+
+            input.select();
+
+            const finishRename = () => {
+
+                const newName = input.value.trim();
+
+                if (newName && newName !== snake.name) {
+
+                    updateDoc(doc(snakesCollection, snakeId), { name: newName });
+
+                }
+
+                menuContainer.removeChild(input);
+
+                toggleButton.style.display = 'block';
+
+                // onSnapshot will update the button text
+
+            };
+
+            input.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') finishRename(); });
+
+            input.addEventListener('blur', finishRename);
+
+        }
+
+
+
+        function createSnakeDropdownMenu(snake) {
+
+            const menuContainer = document.createElement('div');
+
+            menuContainer.className = 'relative snake-menu';
+
+            menuContainer.dataset.id = snake.id;
+
+            const toggleButton = document.createElement('button');
+
+            toggleButton.innerHTML = `${snake.name} Actions <span class="text-xs">▼</span>`;
+
+            toggleButton.className = 'w-full text-left px-3 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400';
+
+            const dropdownContent = document.createElement('div');
+
+            dropdownContent.className = 'dropdown-content absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg p-2 space-y-1 hidden z-10';
+
+            dropdownContent.innerHTML = `<button data-action="rename" class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md">Rename</button><button data-action="add-body" class="w-full text-left px-3 py-1.5 text-sm text-sky-700 hover:bg-sky-50 rounded-md">Add Body Point</button><div class="border-t my-1"></div><button data-action="remove" class="w-full text-left px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 rounded-md">Remove Snake</button>`;
+
+            menuContainer.append(toggleButton, dropdownContent);
+
+            snakeControlsContainer.appendChild(menuContainer);
+
+        }
+
+
+
+        snakeControlsContainer.addEventListener('click', e => {
+
+            const button = e.target.closest('button');
+
+            if (!button) return;
+
+            const menuContainer = e.target.closest('.snake-menu');
+
+            if (!menuContainer) return;
+
+            // This is the main toggle button for the dropdown
+
+            if (button === menuContainer.querySelector('button')) {
+
+                menuContainer.querySelector('.dropdown-content').classList.toggle('hidden');
+
+                return;
+
+            }
+
+            const action = button.dataset.action;
+
+            if (action) {
+
+                const snakeId = menuContainer.dataset.id;
+
+                if (action === 'rename') showRenameInput(menuContainer);
+
+                else if (action === 'add-body') addBodyPointToSnake(snakeId);
+
+                else if (action === 'remove') removeSnake(snakeId);
+
+            }
+
+        });
+
+
+
+        createSnakeBtn.addEventListener('click', async () => {
+
+            const batch = writeBatch(db);
+
+
+
+            // Find a good starting position
+
+            const startX = snakes.length === 0 
+
+                ? controlsPanel.offsetWidth + 80 
+
+                : Math.max(...snakes.map(s => s.path[0].x)) + 150;
+
+            
+
+            // Create data for the 3 points
+
+            const headData = { x: startX, y: 100, type: 'head' };
+
+            const bodyData = { x: startX, y: 200, type: 'body' };
+
+            const tailData = { x: startX, y: 300, type: 'tail' };
+
+            
+
+            // Create Firestore document references for the points
+
+            const headRef = doc(collection(db, pointsCollection.path));
+
+            const bodyRef = doc(collection(db, pointsCollection.path));
+
+            const tailRef = doc(collection(db, pointsCollection.path));
+
+
+
+            // Add the point creation to the batch
+
+            batch.set(headRef, headData);
+
+            batch.set(bodyRef, bodyData);
+
+            batch.set(tailRef, tailData);
+
+            
+
+            // Create data for the snake, using the IDs of the point refs
+
+            const snakeData = {
+
+                name: `Snake ${snakes.length + 1}`,
+
+                path: [headRef.id, bodyRef.id, tailRef.id] // Store an array of point IDs
+
+            };
+
+            const snakeRef = doc(collection(db, snakesCollection.path));
+
+            batch.set(snakeRef, snakeData);
+
+
+
+            // Commit the batch to create all documents atomically
+
+            await batch.commit();
+
+        });
+
+
+
+        async function clearCollection(collectionRef) {
+
+             const batch = writeBatch(db);
+
+             const snapshot = await getDocs(collectionRef);
+
+             snapshot.forEach(doc => batch.delete(doc.ref));
+
+             await batch.commit();
+
+        }
+
+
+
+        clearBoardBtn.addEventListener('click', () => {
+
+            if (document.getElementById('note-editor') || document.getElementById('confirmation-modal-overlay')) return;
+
+            
+
+            showConfirmationModal('Are you sure you want to clear the entire board?', async () => {
+
+                await Promise.all([
+
+                    clearCollection(snakesCollection),
+
+                    clearCollection(pointsCollection),
+
+                    clearCollection(notesCollection)
+
+                ]);
+
+            });
+
+        });
+
+
+
+        // --- INITIALIZATION ---
+
+        async function initFirebase() {
+
+            // Your web app's Firebase configuration
+
+            const firebaseConfig = {
+
+              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
+
+              authDomain: "storyplanner-7ee69.firebaseapp.com",
+
+              projectId: "storyplanner-7ee69",
+
+              storageBucket: "storyplanner-7ee69.firebasestorage.app",
+
+              messagingSenderId: "45084211794",
+
+              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+
+            };
+
+
+
+            // Initialize Firebase
+
+            const app = initializeApp(firebaseConfig);
+
+            db = getFirestore(app);
+
+            auth = getAuth(app);
+
+            setLogLevel('error'); // Use 'debug' for more verbose logging
+
+
+
+            // Define collection paths at the root of the database
+
+            snakesCollection = collection(db, `snakes`);
+
+            pointsCollection = collection(db, `points`);
+
+            notesCollection = collection(db, `notes`);
+
+
+
+            // Sign in and set up listeners
+
+            onAuthStateChanged(auth, user => {
+
+                if (user) {
+
+                    userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`;
+
+                    setupRealtimeListeners();
+
+                } else {
+
+                     userInfoDiv.textContent = 'Authenticating...';
+
+                }
+
+            });
+
+
+
+            try {
+
+                await signInAnonymously(auth);
+
+            } catch (error) {
+
+                console.error("Authentication failed:", error);
+
+                userInfoDiv.textContent = 'Authentication failed.';
+
+            }
+
+        }
+
+        
+
+        // This function reconstructs local data from Firestore snapshots and redraws the UI
+
+        function processAndDraw(localSnakes, localPoints, localNotes) {
+
+            // Re-create class instances from raw Firestore data
+
+            points = localPoints.map(pData => {
+
+                const point = new Point(pData.x, pData.y, pData.type);
+
+                point.id = pData.id;
+
+                return point;
+
+            });
+
+
+
+            notes = localNotes.map(nData => {
+
+                 const note = new Note(nData.text, nData.attachedPointId);
+
+                 note.id = nData.id;
+
+                 note.width = nData.width;
+
+                 note.height = nData.height;
+
+                 note.offsetX = nData.offsetX;
+
+                 note.offsetY = nData.offsetY;
+
+                 return note;
+
+            });
+
+
+
+            const pointMap = new Map(points.map(p => [p.id, p]));
+
+            
+
+            snakes = localSnakes.map(sData => {
+
+                const snake = { ...sData };
+
+                // Replace the array of point IDs with actual Point objects, maintaining order
+
+                snake.path = sData.path ? sData.path.map(pointId => pointMap.get(pointId)).filter(p => p) : [];
+
+                return snake;
+
+            });
+
+            
+
+            // Rebuild the control panel UI from the new state
+
+            snakeControlsContainer.innerHTML = '';
+
+            if (snakes.length > 0) {
+
+                 snakeControlsContainer.classList.add('pt-2', 'border-t');
+
+                 snakes.forEach(createSnakeDropdownMenu);
+
+            } else {
+
+                 snakeControlsContainer.classList.remove('pt-2', 'border-t');
+
+            }
+
+
+
+            draw();
+
+        }
+
+
+
+        function setupRealtimeListeners() {
+
+            let localSnakes = [];
+
+            let localPoints = [];
+
+            let localNotes = [];
+
+            
+
+            onSnapshot(snakesCollection, (snapshot) => {
+
+                localSnakes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                processAndDraw(localSnakes, localPoints, localNotes);
+
+            }, (error) => console.error("Error listening to snakes:", error));
+
+
+
+            onSnapshot(pointsCollection, (snapshot) => {
+
+                localPoints = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                processAndDraw(localSnakes, localPoints, localNotes);
+
+            }, (error) => console.error("Error listening to points:", error));
+
+            
+
+            onSnapshot(notesCollection, (snapshot) => {
+
+                localNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                processAndDraw(localSnakes, localPoints, localNotes);
+
+            }, (error) => console.error("Error listening to notes:", error));
+
+        }
+
+
+
+        function init() {
+
+            resizeCanvas();
+
+            window.addEventListener('resize', resizeCanvas);
+
+            canvas.addEventListener('mousedown', handleMouseDown);
+
+            canvas.addEventListener('mousemove', handleMouseMove);
+
+            canvas.addEventListener('mouseup', handleMouseUp);
+
+            canvas.addEventListener('mouseout', handleMouseUp);
+
+            canvas.addEventListener('contextmenu', handleContextMenu);
+
+            
+
+            initFirebase();
+
+        }
+
+
+
+        init();
+
+    </script>
+
 </body>
+
 </html>
