@@ -822,32 +822,48 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const firebaseConfig = JSON.parse(__firebase_config);
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            setLogLevel('error');
-            const publicPath = `/artifacts/${appId}/public/data`;
-            snakesCollection = collection(db, `${publicPath}/snakes`);
-            pointsCollection = collection(db, `${publicPath}/points`);
-            notesCollection = collection(db, `${publicPath}/notes`);
-            onAuthStateChanged(auth, user => {
-                if (user) {
-                    userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`;
-                    setupRealtimeListeners();
-                } else {
-                     userInfoDiv.textContent = 'Authenticating...';
-                }
-            });
             try {
+                // Check if Firebase config is provided and valid
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                    userInfoDiv.textContent = 'Error: Firebase configuration is missing.';
+                    console.error('__firebase_config is not defined.');
+                    return;
+                }
+                
+                const firebaseConfig = JSON.parse(__firebase_config);
+                
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('error'); // Use 'debug' for more verbose logging
+
+                const publicPath = `/artifacts/${appId}/public/data`;
+                snakesCollection = collection(db, `${publicPath}/snakes`);
+                pointsCollection = collection(db, `${publicPath}/points`);
+                notesCollection = collection(db, `${publicPath}/notes`);
+
+                onAuthStateChanged(auth, user => {
+                    if (user) {
+                        userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`;
+                        setupRealtimeListeners();
+                    } else {
+                        // This is expected to be called once with user=null initially
+                        userInfoDiv.textContent = 'Authenticating...';
+                    }
+                });
+
+                // Now, attempt to sign in
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
             } catch (error) {
-                console.error("Authentication failed:", error);
-                userInfoDiv.textContent = 'Authentication failed.';
+                console.error("Firebase Initialization or Auth Failed:", error);
+                userInfoDiv.innerHTML = `<span class="text-red-500">Connection Failed.</span>`;
+                if (error instanceof SyntaxError) {
+                     console.error("Failed to parse firebaseConfig. Check if it's valid JSON.");
+                }
             }
         }
         
