@@ -44,11 +44,11 @@
             color: #9CA3AF; /* gray-400 */
         }
         .dark .snake-menu button {
-             background-color: #374151; /* gray-700 */
-             color: #E5E7EB; /* gray-200 */
+            background-color: #374151; /* gray-700 */
+            color: #E5E7EB; /* gray-200 */
         }
          .dark .snake-menu button:hover {
-             background-color: #4B5563; /* gray-600 */
+            background-color: #4B5563; /* gray-600 */
          }
         .dark .dropdown-content {
             background-color: #1F2937; /* gray-800 */
@@ -95,7 +95,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- SETUP ---
@@ -115,22 +115,31 @@
         // --- GLOBAL & FIRESTORE STATE ---
         let db, auth;
         let snakesCollection, pointsCollection, notesCollection, noteBoxDocRef;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         
         // Local state, populated by Firestore
         let snakes = []; 
         let points = []; 
         let notes = [];
 
-        // Local UI state
-        let draggedPoint = null;
+        // --- INTERACTION STATE ---
+        // Flags for active drags
         let isDraggingPoint = false;
-        let draggedSnake = null;
         let isDraggingSnake = false;
-        let resizedNote = null;
         let isResizingNote = false;
-        let dragStart = { x: 0, y: 0 };
+        let isDraggingNote = false;
         let isPanning = false;
-        let panStart = { x: 0, y: 0 };
+        
+        // Objects being interacted with
+        let draggedPoint = null;
+        let draggedSnake = null;
+        let resizedNote = null;
+        let draggedNote = null;
+        
+        // State for initiating drags
+        let potentialDrag = null; // Stores info about what *could* be dragged
+        let mouseDownCoords = null; // Stores world coordinates of the last mousedown
+        let panStart = { x: 0, y: 0 }; // Screen coordinates for panning
 
         // Viewport state for panning and zooming
         let view = { x: 0, y: 0, zoom: 1 };
@@ -161,6 +170,7 @@
         const MIN_NOTE_HEIGHT = 40;
         const MIN_ZOOM = 0.2;
         const MAX_ZOOM = 5;
+        const DRAG_THRESHOLD = 4; // Pixels mouse must move to initiate a drag
 
         // --- UTILITY & COORDINATE FUNCTIONS ---
         function debounce(func, delay) {
@@ -260,6 +270,8 @@
                 this.originalHeight = 0;
                 this.offsetX = 40;
                 this.offsetY = -50;
+                this.originalOffsetX = 0;
+                this.originalOffsetY = 0;
             }
             wrapText(context, text, x, y, maxWidth, lineHeight) {
                 const words = text.split(' ');
@@ -381,20 +393,15 @@
         function draw() {
             if (!ctx) return;
             
-            // Save context, clear the physical screen
             ctx.save();
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Apply viewport transform (pan and zoom)
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.scale(view.zoom, view.zoom);
             ctx.translate(-canvas.width / 2, -canvas.height / 2);
             ctx.translate(-view.x, -view.y);
-
-            // --- Start drawing world objects ---
             
-            // Draw lines first
             snakes.forEach(snakeObj => {
                 if (snakeObj.path && snakeObj.path.length > 1) {
                     ctx.beginPath();
@@ -408,13 +415,11 @@
                 }
             });
             
-            // Draw notes
             notes.forEach(note => {
                 const parentPoint = points.find(p => p.id === note.attachedPointId);
                 if (parentPoint) note.draw(parentPoint);
             });
             
-            // Draw points on top of lines
             points.forEach(p => {
                 let angle = 0;
                 const ownerSnake = snakes.find(s => s.path && s.path.some(sp => sp.id === p.id));
@@ -425,7 +430,6 @@
                 p.draw(angle);
             });
             
-            // Draw labels last
             snakes.forEach(snakeObj => {
                 if (snakeObj.path && snakeObj.path.length > 0) {
                     const head = snakeObj.path[0];
@@ -437,9 +441,6 @@
                 }
             });
 
-            // --- End drawing world objects ---
-
-            // Restore context to pre-transform state
             ctx.restore();
         }
 
@@ -453,46 +454,48 @@
         // --- EVENT HANDLERS ---
         function handleMouseDown(e) {
             e.preventDefault();
-            const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-            const mouseX = worldCoords.x;
-            const mouseY = worldCoords.y;
-
+            potentialDrag = null;
             if (e.button !== 0) return;
 
-            const clickedPoint = getPointAt(mouseX, mouseY);
-            if (clickedPoint) {
-                draggedPoint = clickedPoint;
-                isDraggingPoint = true;
-                canvas.style.cursor = 'grabbing';
-                return;
-            }
-            
+            const worldCoords = screenToWorld(e.offsetX, e.offsetY);
+            mouseDownCoords = worldCoords;
+
             for (let i = notes.length - 1; i >= 0; i--) {
                 const note = notes[i];
                 const parentPoint = points.find(p => p.id === note.attachedPointId);
                 if (parentPoint) {
-                    if (note.isDeleteClicked(mouseX, mouseY, parentPoint)) {
+                    if (note.isDeleteClicked(worldCoords.x, worldCoords.y, parentPoint)) {
                         deleteDoc(doc(notesCollection, note.id));
+                        mouseDownCoords = null; 
                         return;
                     }
-                    if (note.isResizeClicked(mouseX, mouseY, parentPoint)) {
-                        isResizingNote = true;
-                        resizedNote = note;
-                        resizedNote.originalWidth = note.width;
-                        resizedNote.originalHeight = note.height;
-                        dragStart = { x: mouseX, y: mouseY };
+                    if (note.isResizeClicked(worldCoords.x, worldCoords.y, parentPoint)) {
+                        potentialDrag = { type: 'note-resize', target: note };
+                        note.originalWidth = note.width;
+                        note.originalHeight = note.height;
                         canvas.style.cursor = 'nwse-resize';
                         return;
                     }
-                    if (isValidUrl(note.text) && note.isLinkIconClicked(mouseX, mouseY, parentPoint)) {
+                    if (isValidUrl(note.text) && note.isLinkIconClicked(worldCoords.x, worldCoords.y, parentPoint)) {
                         window.open(note.text, '_blank');
+                        mouseDownCoords = null;
                         return;
                     }
-                    if (note.isBodyClicked(mouseX, mouseY, parentPoint)) {
-                        createNoteInput(note);
+                    if (note.isBodyClicked(worldCoords.x, worldCoords.y, parentPoint)) {
+                        potentialDrag = { type: 'note-drag', target: note };
+                        note.originalOffsetX = note.offsetX;
+                        note.originalOffsetY = note.offsetY;
+                        canvas.style.cursor = 'grabbing';
                         return;
                     }
                 }
+            }
+
+            const clickedPoint = getPointAt(worldCoords.x, worldCoords.y);
+            if (clickedPoint) {
+                potentialDrag = { type: 'point', target: clickedPoint };
+                canvas.style.cursor = 'grabbing';
+                return;
             }
 
             for (let i = snakes.length - 1; i >= 0; i--) {
@@ -503,22 +506,132 @@
                 const metrics = ctx.measureText(snake.name);
                 const labelX = head.x - metrics.width / 2;
                 const labelY = head.y - POINT_RADIUS - 5 - LABEL_HEIGHT;
-                if (mouseX > labelX && mouseX < labelX + metrics.width && mouseY > labelY && mouseY < labelY + LABEL_HEIGHT) {
-                    draggedSnake = snake;
-                    isDraggingSnake = true;
-                    dragStart = { x: mouseX, y: mouseY };
-                    draggedSnake.path.forEach(p => { p.originalX = p.x; p.originalY = p.y; });
+                if (worldCoords.x > labelX && worldCoords.x < labelX + metrics.width && worldCoords.y > labelY && worldCoords.y < labelY + LABEL_HEIGHT) {
+                    potentialDrag = { type: 'snake-drag', target: snake };
+                    snake.path.forEach(p => { p.originalX = p.x; p.originalY = p.y; });
                     canvas.style.cursor = 'move';
                     return;
                 }
             }
             
-            // If nothing else was clicked, start panning
-            isPanning = true;
+            potentialDrag = { type: 'pan' };
             panStart = { x: e.clientX, y: e.clientY };
             canvas.style.cursor = 'grabbing';
         }
         
+        function handleMouseMove(e) {
+            e.preventDefault();
+
+            if (isDraggingPoint || isDraggingSnake || isResizingNote || isDraggingNote || isPanning) {
+                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
+                const mouseX = worldCoords.x;
+                const mouseY = worldCoords.y;
+
+                if (isPanning) {
+                    const dx = e.clientX - panStart.x;
+                    const dy = e.clientY - panStart.y;
+                    view.x -= dx / view.zoom;
+                    view.y -= dy / view.zoom;
+                    panStart = { x: e.clientX, y: e.clientY };
+                    draw();
+                } else if (isResizingNote && resizedNote) {
+                    const deltaX = mouseX - mouseDownCoords.x;
+                    const deltaY = mouseY - mouseDownCoords.y;
+                    resizedNote.width = Math.max(MIN_NOTE_WIDTH, resizedNote.originalWidth + deltaX);
+                    resizedNote.height = Math.max(MIN_NOTE_HEIGHT, resizedNote.originalHeight + deltaY);
+                    draw();
+                } else if (isDraggingNote && draggedNote) {
+                    const deltaX = mouseX - mouseDownCoords.x;
+                    const deltaY = mouseY - mouseDownCoords.y;
+                    draggedNote.offsetX = draggedNote.originalOffsetX + deltaX;
+                    draggedNote.offsetY = draggedNote.originalOffsetY + deltaY;
+                    draw();
+                } else if (isDraggingPoint && draggedPoint) {
+                    let currentX = mouseX, currentY = mouseY;
+                    let ownerSnake = null, pointIndexInSnake = -1;
+                    for (const snake of snakes) {
+                        if(!snake.path) continue;
+                        const index = snake.path.findIndex(p => p.id === draggedPoint.id);
+                        if (index > -1) {
+                            ownerSnake = snake; pointIndexInSnake = index; break;
+                        }
+                    }
+                    if (ownerSnake) {
+                        const ownerSnakePath = ownerSnake.path;
+                        const prev = ownerSnakePath[pointIndexInSnake - 1], next = ownerSnakePath[pointIndexInSnake + 1];
+                        if (prev) {
+                            const dist = Math.hypot(currentX - prev.x, currentY - prev.y);
+                            if (dist > STRETCH_LIMIT) {
+                                const angle = Math.atan2(currentY - prev.y, currentX - prev.x);
+                                currentX = prev.x + STRETCH_LIMIT * Math.cos(angle);
+                                currentY = prev.y + STRETCH_LIMIT * Math.sin(angle);
+                            }
+                        }
+                        if (next) {
+                            const dist = Math.hypot(currentX - next.x, currentY - next.y);
+                            if (dist > STRETCH_LIMIT) {
+                                const angle = Math.atan2(currentY - next.y, currentX - next.x);
+                                currentX = next.x + STRETCH_LIMIT * Math.cos(angle);
+                                currentY = next.y + STRETCH_LIMIT * Math.sin(angle);
+                            }
+                        }
+                    }
+                    draggedPoint.x = currentX;
+                    draggedPoint.y = currentY;
+                    draw();
+                } else if (isDraggingSnake && draggedSnake) {
+                    const deltaX = mouseX - mouseDownCoords.x;
+                    const deltaY = mouseY - mouseDownCoords.y;
+                    draggedSnake.path.forEach(p => { p.x = p.originalX + deltaX; p.y = p.originalY + deltaY; });
+                    draw();
+                }
+                return;
+            }
+
+            if (potentialDrag && mouseDownCoords) {
+                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
+                const dist = Math.hypot(worldCoords.x - mouseDownCoords.x, worldCoords.y - mouseDownCoords.y);
+
+                if (dist > DRAG_THRESHOLD) {
+                    switch (potentialDrag.type) {
+                        case 'point': isDraggingPoint = true; draggedPoint = potentialDrag.target; break;
+                        case 'note-resize': isResizingNote = true; resizedNote = potentialDrag.target; break;
+                        case 'note-drag': isDraggingNote = true; draggedNote = potentialDrag.target; break;
+                        case 'snake-drag': isDraggingSnake = true; draggedSnake = potentialDrag.target; break;
+                        case 'pan': isPanning = true; break;
+                    }
+                    potentialDrag = null;
+                }
+            }
+        }
+
+        function handleMouseUp(e) {
+            e.preventDefault();
+            if (isDraggingPoint && draggedPoint) {
+                updateDoc(doc(pointsCollection, draggedPoint.id), { x: draggedPoint.x, y: draggedPoint.y });
+            }
+            if (isDraggingSnake && draggedSnake) {
+                const batch = writeBatch(db);
+                draggedSnake.path.forEach(p => {
+                    const pointRef = doc(pointsCollection, p.id);
+                    batch.update(pointRef, { x: p.x, y: p.y });
+                });
+                batch.commit();
+            }
+            if (isResizingNote && resizedNote) {
+                updateDoc(doc(notesCollection, resizedNote.id), { width: resizedNote.width, height: resizedNote.height });
+            }
+            if (isDraggingNote && draggedNote) {
+                updateDoc(doc(notesCollection, draggedNote.id), { offsetX: draggedNote.offsetX, offsetY: draggedNote.offsetY });
+            }
+
+            isDraggingPoint = isDraggingSnake = isResizingNote = isPanning = isDraggingNote = false;
+            draggedPoint = draggedSnake = resizedNote = draggedNote = null;
+            potentialDrag = null;
+            mouseDownCoords = null;
+            canvas.style.cursor = 'grab';
+        }
+
         async function handleContextMenu(e) {
             e.preventDefault();
             const worldCoords = screenToWorld(e.offsetX, e.offsetY);
@@ -544,88 +657,6 @@
             }
         }
 
-        function handleMouseMove(e) {
-            e.preventDefault();
-            const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-            const mouseX = worldCoords.x;
-            const mouseY = worldCoords.y;
-
-            if (isPanning) {
-                const dx = e.clientX - panStart.x;
-                const dy = e.clientY - panStart.y;
-                view.x -= dx / view.zoom;
-                view.y -= dy / view.zoom;
-                panStart = { x: e.clientX, y: e.clientY };
-                draw();
-            } else if (isResizingNote && resizedNote) {
-                const deltaX = mouseX - dragStart.x;
-                const deltaY = mouseY - dragStart.y;
-                resizedNote.width = Math.max(MIN_NOTE_WIDTH, resizedNote.originalWidth + deltaX);
-                resizedNote.height = Math.max(MIN_NOTE_HEIGHT, resizedNote.originalHeight + deltaY);
-                draw();
-            } else if (isDraggingPoint && draggedPoint) {
-                let currentX = mouseX, currentY = mouseY;
-                let ownerSnake = null, pointIndexInSnake = -1;
-                for (const snake of snakes) {
-                    if(!snake.path) continue;
-                    const index = snake.path.findIndex(p => p.id === draggedPoint.id);
-                    if (index > -1) {
-                        ownerSnake = snake; pointIndexInSnake = index; break;
-                    }
-                }
-                
-                if (ownerSnake) {
-                      const ownerSnakePath = ownerSnake.path;
-                      const prev = ownerSnakePath[pointIndexInSnake - 1], next = ownerSnakePath[pointIndexInSnake + 1];
-                      if (prev) {
-                          const dist = Math.hypot(currentX - prev.x, currentY - prev.y);
-                          if (dist > STRETCH_LIMIT) {
-                              const angle = Math.atan2(currentY - prev.y, currentX - prev.x);
-                              currentX = prev.x + STRETCH_LIMIT * Math.cos(angle);
-                              currentY = prev.y + STRETCH_LIMIT * Math.sin(angle);
-                          }
-                      }
-                      if (next) {
-                          const dist = Math.hypot(currentX - next.x, currentY - next.y);
-                          if (dist > STRETCH_LIMIT) {
-                              const angle = Math.atan2(currentY - next.y, currentX - next.x);
-                              currentX = next.x + STRETCH_LIMIT * Math.cos(angle);
-                              currentY = next.y + STRETCH_LIMIT * Math.sin(angle);
-                          }
-                      }
-                }
-                draggedPoint.x = currentX;
-                draggedPoint.y = currentY;
-                draw();
-            } else if (isDraggingSnake && draggedSnake) {
-                const deltaX = mouseX - dragStart.x, deltaY = mouseY - dragStart.y;
-                draggedSnake.path.forEach(p => { p.x = p.originalX + deltaX; p.y = p.originalY + deltaY; });
-                draw();
-            }
-        }
-
-        function handleMouseUp(e) {
-            e.preventDefault();
-            if (isDraggingPoint && draggedPoint) {
-                updateDoc(doc(pointsCollection, draggedPoint.id), { x: draggedPoint.x, y: draggedPoint.y });
-            }
-            if (isDraggingSnake && draggedSnake) {
-                const batch = writeBatch(db);
-                draggedSnake.path.forEach(p => {
-                    const pointRef = doc(pointsCollection, p.id);
-                    batch.update(pointRef, { x: p.x, y: p.y });
-                });
-                batch.commit();
-            }
-            if (isResizingNote && resizedNote) {
-                updateDoc(doc(notesCollection, resizedNote.id), { width: resizedNote.width, height: resizedNote.height });
-            }
-
-            isDraggingPoint = isDraggingSnake = isResizingNote = isPanning = false;
-            draggedPoint = draggedSnake = resizedNote = null;
-            canvas.style.cursor = 'grab';
-        }
-
         function handleWheel(e) {
             e.preventDefault();
             const mousePos = { x: e.offsetX, y: e.offsetY };
@@ -633,9 +664,9 @@
             
             const zoomFactor = 1.1;
             let newZoom = view.zoom;
-            if (e.deltaY < 0) { // Zoom in
+            if (e.deltaY < 0) {
                 newZoom *= zoomFactor;
-            } else { // Zoom out
+            } else {
                 newZoom /= zoomFactor;
             }
             view.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
@@ -648,6 +679,24 @@
             draw();
         }
         
+        function handleDoubleClick(e) {
+            e.preventDefault();
+            if (e.target !== canvas) return;
+
+            const worldCoords = screenToWorld(e.offsetX, e.offsetY);
+            const mouseX = worldCoords.x;
+            const mouseY = worldCoords.y;
+
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                const parentPoint = points.find(p => p.id === note.attachedPointId);
+                if (parentPoint && note.isBodyClicked(mouseX, mouseY, parentPoint)) {
+                    createNoteInput(note);
+                    return; 
+                }
+            }
+        }
+
         // --- UI/CONTROL LOGIC ---
         function toggleTheme() {
             if (currentTheme === 'light') {
@@ -835,7 +884,6 @@
         createSnakeBtn.addEventListener('click', async () => {
             const batch = writeBatch(db);
             
-            // Place new snake in the center of the current view
             const startX = view.x + (canvas.width / 2 / view.zoom);
             const startY = view.y + (canvas.height / 2 / view.zoom);
             
@@ -875,31 +923,31 @@
                     clearCollection(snakesCollection),
                     clearCollection(pointsCollection),
                     clearCollection(notesCollection),
-                    setDoc(noteBoxDocRef, { content: '' }) // Also clear the note box
+                    setDoc(noteBoxDocRef, { content: '' })
                 ]);
             });
         });
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const firebaseConfig = {
-              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
-              authDomain: "storyplanner-7ee69.firebaseapp.com",
-              projectId: "storyplanner-7ee69",
-              storageBucket: "storyplanner-7ee69.appspot.com",
-              messagingSenderId: "45084211794",
-              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
-            };
+            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+            if (!firebaseConfig.apiKey) {
+                userInfoDiv.textContent = 'Firebase config not found.';
+                console.error("Firebase config not found. Please provide it.");
+                return;
+            }
 
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
             setLogLevel('error');
 
-            snakesCollection = collection(db, `snakes`);
-            pointsCollection = collection(db, `points`);
-            notesCollection = collection(db, `notes`);
-            noteBoxDocRef = doc(db, 'noteBox', 'mainNote'); // Define the single doc for the note box
+            const publicDataPath = `/artifacts/${appId}/public/data`;
+            snakesCollection = collection(db, `${publicDataPath}/snakes`);
+            pointsCollection = collection(db, `${publicDataPath}/points`);
+            notesCollection = collection(db, `${publicDataPath}/notes`);
+            noteBoxDocRef = doc(db, `${publicDataPath}/noteBox/mainNote`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
@@ -911,7 +959,11 @@
             });
 
             try {
-                await signInAnonymously(auth);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication failed.';
@@ -926,13 +978,13 @@
             });
 
             notes = localNotes.map(nData => {
-               const note = new Note(nData.text, nData.attachedPointId);
-               note.id = nData.id;
-               note.width = nData.width;
-               note.height = nData.height;
-               note.offsetX = nData.offsetX;
-               note.offsetY = nData.offsetY;
-               return note;
+              const note = new Note(nData.text, nData.attachedPointId);
+              note.id = nData.id;
+              note.width = nData.width;
+              note.height = nData.height;
+              note.offsetX = nData.offsetX;
+              note.offsetY = nData.offsetY;
+              return note;
             });
 
             const pointMap = new Map(points.map(p => [p.id, p]));
@@ -974,13 +1026,11 @@
                 processAndDraw(localSnakes, localPoints, localNotes);
             }, (error) => console.error("Error listening to notes:", error));
 
-            // Listener for the shared note box
             onSnapshot(noteBoxDocRef, (doc) => {
                 if (doc.exists()) {
                     const data = doc.data();
-                    // Update only if content is different to avoid cursor jumps
                     if (noteBoxInput.value !== data.content) {
-                        noteBoxInput.value = data.content;
+                        noteBoxInput.value = data.content || '';
                     }
                 }
             }, (error) => console.error("Error listening to note box:", error));
@@ -989,19 +1039,18 @@
         function init() {
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
-            // Event listeners are now attached directly to the canvas
             canvas.addEventListener('mousedown', handleMouseDown);
             canvas.addEventListener('mousemove', handleMouseMove);
             canvas.addEventListener('mouseup', handleMouseUp);
-            canvas.addEventListener('mouseout', handleMouseUp); // Stop dragging if mouse leaves canvas
+            canvas.addEventListener('mouseout', handleMouseUp);
             canvas.addEventListener('wheel', handleWheel);
             canvas.addEventListener('contextmenu', handleContextMenu);
+            canvas.addEventListener('dblclick', handleDoubleClick);
             
             toggleThemeBtn.addEventListener('click', toggleTheme);
             
-            // Debounced save for the note box
             const saveNoteBox = debounce(() => {
-                setDoc(noteBoxDocRef, { content: noteBoxInput.value });
+                setDoc(noteBoxDocRef, { content: noteBoxInput.value }, { merge: true });
             }, 500);
             noteBoxInput.addEventListener('input', saveNoteBox);
 
