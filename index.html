@@ -171,16 +171,24 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'detective-board-app';
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", projectId: "YOUR_PROJECT_ID" };
+            // Your web app's Firebase configuration
+            const firebaseConfig = {
+              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
+              authDomain: "storyplanner-7ee69.firebaseapp.com",
+              projectId: "storyplanner-7ee69",
+              storageBucket: "storyplanner-7ee69.appspot.com",
+              messagingSenderId: "45084211794",
+              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+            };
 
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
 
-            const basePath = `artifacts/${appId}/public/data`;
-            notesCollection = collection(db, `${basePath}/points`);
-            connectionsCollection = collection(db, `${basePath}/snakes`);
+            // NOTE: The 'basePath' logic is removed as it's not needed 
+            // when using your own Firebase project. Data will be stored at the root.
+            notesCollection = collection(db, `points`);
+            connectionsCollection = collection(db, `snakes`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
@@ -193,11 +201,8 @@
             });
 
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                // When using your own project, we'll rely on Anonymous sign-in
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
