@@ -1,1066 +1,572 @@
 <!DOCTYPE html>
-<html lang="en" class=""> <!-- Add/remove 'dark' class here to toggle theme -->
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Snake Whiteboard</title>
+    <title>Detective Evidence Board</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Permanent+Marker&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Kalam', cursive;
             overscroll-behavior: none;
+            background-color: #3D352E; /* Dark wood color */
+            user-select: none; /* Prevent text selection during drag */
         }
-        #whiteboard {
+
+        #board {
+            background-image: url('https://www.transparenttextures.com/patterns/cork-wallet.png');
+            background-color: #C19A6B; /* Cork color */
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .note {
+            position: absolute;
+            width: 200px;
+            height: 150px;
+            padding: 20px 15px 15px 15px;
+            background-color: #FEFDE2; /* Off-white paper */
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
             cursor: grab;
-            touch-action: none;
+            transition: box-shadow 0.1s ease-in-out, border-color 0.2s ease-in-out;
+            border: 2px solid transparent;
+            display: flex; /* Use flexbox for content layout */
         }
-        .dropdown-content {
-            transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
-            transform-origin: top;
+
+        .note.is-dragging, .note.is-rotating, .note.is-resizing {
+            cursor: grabbing;
+            z-index: 100;
+            box-shadow: 10px 10px 25px rgba(0,0,0,0.4);
+            transform-origin: center center;
         }
-        #note-editor, #noteBoxInput, #item-name-editor {
-            font-family: 'Inter', sans-serif;
+        
+        .note-pin {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 20px;
+            background-color: #E53E3E; /* Red */
+            border-radius: 50%;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+            border: 2px solid #C53030;
+            cursor: crosshair; /* Indicates a special handle */
+            z-index: 2;
+        }
+
+        .note-content {
+            flex-grow: 1;
+            font-size: 18px;
+            line-height: 1.4;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .note-textarea {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
             resize: none;
+            outline: none;
+            font-family: 'Kalam', cursive;
+            font-size: 18px;
+            line-height: 1.4;
+            color: #1a202c;
         }
-        .modal-panel {
-             transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+        
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 0 20px 20px;
+            border-color: transparent transparent rgba(0,0,0,0.2) transparent;
+            cursor: nwse-resize;
+            z-index: 2;
         }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+
+        #connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
         }
-        /* Style for dark mode */
-        .dark body {
-            background-color: #111827; /* gray-900 */
+
+        #controls {
+            font-family: 'Permanent Marker', cursive;
         }
-        .dark #controls, .dark #noteBox {
-            background-color: rgba(31, 41, 55, 0.8); /* bg-gray-800/80 */
-            border-color: #374151; /* border-gray-700 */
-        }
-        .dark h2, .dark h3, .dark h4, .dark button, .dark .text-gray-700 {
-            color: #D1D5DB; /* gray-300 */
-        }
-        .dark #userInfo {
-            background-color: #374151; /* gray-700 */
-            color: #9CA3AF; /* gray-400 */
-        }
-        .dark .item-menu button {
-            background-color: #374151; /* gray-700 */
-            color: #E5E7EB; /* gray-200 */
-        }
-         .dark .item-menu button:hover {
-            background-color: #4B5563; /* gray-600 */
-         }
-        .dark .dropdown-content {
-            background-color: #1F2937; /* gray-800 */
-            border-color: #374151; /* gray-700 */
-        }
-        .dark .dropdown-content button:hover {
-            background-color: #374151; /* gray-700 */
-        }
-         .dark .text-sky-700 { color: #7DD3FC; /* sky-300 */ }
-         .dark .hover\:bg-sky-50:hover { background-color: rgba(56, 189, 248, 0.1); }
-         .dark .text-red-700 { color: #FCA5A5; /* red-300 */ }
-         .dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.1); }
-         .dark #noteBoxInput {
-            background-color: #374151; /* gray-700 */
-            color: #E5E7EB; /* gray-200 */
-            border-color: #4B5563; /* gray-600 */
-         }
     </style>
 </head>
-<body class="h-screen w-screen overflow-hidden flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-900">
+<body class="w-screen h-screen m-0 p-0">
 
-    <div class="w-full h-full bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 relative overflow-hidden">
-        
-        <div class="absolute top-4 left-4 z-20 flex flex-col space-y-2 max-h-[90vh]">
-            <div id="controls" class="p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2 overflow-y-auto">
-                <h2 class="font-bold text-gray-700 text-lg">Controls</h2>
-                <div id="userInfo" class="text-xs text-gray-500 bg-gray-100 p-2 rounded-md break-all">Connecting...</div>
-                <button id="createSnakeBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 cursor-grab">Create Snake</button>
-                <button id="addPointBtn" class="w-full px-4 py-2 bg-green-500 text-white font-semibold rounded-md hover:bg-green-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-75 cursor-grab">Add Point</button>
-                <button id="addZoneBtn" class="w-full px-4 py-2 bg-purple-500 text-white font-semibold rounded-md hover:bg-purple-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-opacity-75 cursor-grab">Add Zone</button>
-                <button id="toggleThemeBtn" class="w-full px-4 py-2 bg-indigo-500 text-white font-semibold rounded-md hover:bg-indigo-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">Toggle Theme</button>
-                <button id="clearBoardBtn" class="w-full px-4 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-75">Clear Board</button>
-                
-                <div id="snakeControlsContainer" class="flex flex-col space-y-2"></div>
-                <div id="zoneControlsContainer" class="flex flex-col space-y-2"></div>
-            </div>
-            <div id="noteBox" class="p-4 bg-white/80 backdrop-blur-sm rounded-lg shadow border border-gray-200 flex flex-col space-y-2">
-                <h3 class="font-bold text-gray-700 text-lg">Note Box</h3>
-                <textarea id="noteBoxInput" class="w-full h-24 p-2 border rounded-md bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Type shared notes here..."></textarea>
-            </div>
-        </div>
-
-        <canvas id="whiteboard"></canvas>
-
+    <!-- The main evidence board container -->
+    <div id="board">
+        <!-- SVG layer for drawing connection lines (the "yarn") -->
+        <svg id="connections-svg"></svg>
     </div>
 
-    <!-- Firebase SDK -->
+    <!-- UI Controls -->
+    <div id="controls" class="absolute top-4 left-4 z-20 bg-gray-800/80 backdrop-blur-sm text-white p-4 rounded-lg shadow-2xl border border-gray-600 flex flex-col space-y-3">
+        <h1 class="text-3xl text-center text-yellow-300">Evidence Board</h1>
+        <div id="userInfo" class="text-xs text-center bg-gray-700 p-2 rounded-md break-all">Connecting...</div>
+        <button id="addNoteBtn" class="px-4 py-2 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg cursor-grab">Add Evidence</button>
+        <button id="connectModeBtn" class="px-4 py-2 bg-red-500 text-white font-bold rounded-md hover:bg-red-600 transition-transform transform hover:scale-105 shadow-lg">Connect Evidence</button>
+        <button id="clearBoardBtn" class="px-4 py-2 bg-blue-500 text-white font-bold rounded-md hover:bg-blue-600 transition-transform transform hover:scale-105 shadow-lg">Clear Board</button>
+    </div>
+    
+    <!-- Message display for connection mode -->
+    <div id="message-box" class="hidden absolute bottom-10 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-lg shadow-xl z-30">
+        <p>Click two evidence notes to connect them with yarn.</p>
+    </div>
+
+
+    <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // --- SETUP ---
-        const canvas = document.getElementById('whiteboard');
-        const ctx = canvas.getContext('2d');
-        const parentContainer = canvas.parentElement;
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- UI ELEMENTS ---
-        const createSnakeBtn = document.getElementById('createSnakeBtn');
+        // --- DOM ELEMENTS ---
+        const board = document.getElementById('board');
+        const addNoteBtn = document.getElementById('addNoteBtn');
+        const connectModeBtn = document.getElementById('connectModeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
-        const toggleThemeBtn = document.getElementById('toggleThemeBtn');
-        const snakeControlsContainer = document.getElementById('snakeControlsContainer');
-        const zoneControlsContainer = document.getElementById('zoneControlsContainer');
+        const connectionsSvg = document.getElementById('connections-svg');
         const userInfoDiv = document.getElementById('userInfo');
-        const noteBoxInput = document.getElementById('noteBoxInput');
-        const addPointBtn = document.getElementById('addPointBtn');
-        const addZoneBtn = document.getElementById('addZoneBtn');
-        
-        // --- GLOBAL & FIRESTORE STATE ---
+        const messageBox = document.getElementById('message-box');
+
+        // --- FIREBASE STATE ---
         let db, auth;
-        let snakesCollection, pointsCollection, notesCollection, zonesCollection, noteBoxDocRef;
-        
-        // Local state, populated by Firestore
-        let snakes = []; 
-        let points = []; 
-        let notes = [];
-        let zones = [];
+        let notesCollection;
+        let connectionsCollection;
+        let userId;
 
-        // --- INTERACTION STATE ---
-        let isDraggingPoint = false, isDraggingSnake = false, isResizingNote = false, isDraggingNote = false, isPanning = false, isDraggingNewSnake = false, isDraggingNewZone = false, isDraggingZone = false, isResizingZone = false;
-        let draggedPoint = null, draggedSnake = null, resizedNote = null, draggedNote = null, selectedPoint = null, draggedZone = null, resizedZone = null;
-        let potentialDrag = null, mouseDownCoords = null, panStart = { x: 0, y: 0 };
-        let draggingNewPointState = { active: false, x: 0, y: 0, dropTarget: null };
-        let newSnakePreview = { head: {x:0, y:0}, body: {x:0, y:0}, tail: {x:0, y:0} };
-        let newZonePreview = { x: 0, y: 0, radius: 150 };
-
-
-        // Viewport state for panning and zooming
-        let view = { x: 0, y: 0, zoom: 1 };
-        
-        // --- THEME & COLORS ---
-        const LIGHT_THEME = {
-            background: '#FFFFFF', head: '#10B981', body: '#FFFFFF', tail: '#EF4444',
-            line: '#374151', noteBg: '#FEF9C3', noteBorder: '#FDE047', link: '#0000EE', text: '#1F2937',
-            selection: '#007BFF', lineHighlight: '#0EA5E9', zoneFill: 'rgba(238, 242, 255, 0.5)', zoneStroke: '#A5B4FC'
-        };
-        const DARK_THEME = {
-            background: '#1F2937', head: '#34D399', body: '#FFFFFF', tail: '#F87171',
-            line: '#9CA3AF', noteBg: '#4B5563', noteBorder: '#6B7280', link: '#60A5FA', text: '#F3F4F6',
-            selection: '#00AFFF', lineHighlight: '#38BDF8', zoneFill: 'rgba(55, 48, 163, 0.3)', zoneStroke: '#818CF8'
-        };
-        let COLORS = LIGHT_THEME;
-        let currentTheme = 'light';
-
-        // --- CONSTANTS ---
-        const POINT_RADIUS = 12;
-        const STRETCH_LIMIT = 300; 
-        const LABEL_FONT = 'bold 16px Inter';
-        const ZONE_LABEL_FONT = 'bold 18px Inter';
-        const LABEL_HEIGHT = 16;
-        const NOTE_FONT = '14px Inter';
-        const MIN_NOTE_WIDTH = 80;
-        const MIN_NOTE_HEIGHT = 40;
-        const MIN_ZOOM = 0.2;
-        const MAX_ZOOM = 5;
-        const DRAG_THRESHOLD = 4;
-        const LINE_HIT_WIDTH = 10;
-        const MIN_ZONE_RADIUS = 50;
-
-        // --- UTILITY & COORDINATE FUNCTIONS ---
-        function debounce(func, delay) {
-            let timeout;
-            return function(...args) {
-                const context = this;
-                clearTimeout(timeout);
-                timeout = setTimeout(() => func.apply(context, args), delay);
-            };
-        }
-
-        function isValidUrl(string) {
-            try {
-                const url = new URL(string);
-                return url.protocol === "http:" || url.protocol === "https:";
-            } catch (_) { return false; }
-        }
-
-        function screenToWorld(screenX, screenY) {
-            return { x: (screenX / view.zoom) + view.x, y: (screenY / view.zoom) + view.y };
-        }
-
-        function worldToScreen(worldX, worldY) {
-            return { x: (worldX - view.x) * view.zoom, y: (worldY - view.y) * view.zoom };
-        }
-
-        // --- CLASSES ---
-        class Zone {
-            constructor(x, y, radius, name, color) {
-                this.id = null; this.x = x; this.y = y; this.radius = radius; this.name = name; this.color = color;
-                this.originalX = 0; this.originalY = 0; this.originalRadius = 0;
-            }
-            draw() {
-                // Zone is now hollow, it only has a stroke (border)
-                ctx.strokeStyle = this.color.stroke;
-                ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.stroke(); // Draw the border
-
-                // Name
-                ctx.fillStyle = COLORS.text;
-                ctx.font = ZONE_LABEL_FONT;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(this.name, this.x, this.y - this.radius - 20);
-
-                // Resize handle
-                const handleAngle = Math.PI / 4;
-                const handleX = this.x + this.radius * Math.cos(handleAngle);
-                const handleY = this.y + this.radius * Math.sin(handleAngle);
-                ctx.fillStyle = COLORS.zoneStroke;
-                ctx.beginPath();
-                ctx.arc(handleX, handleY, 8 / view.zoom, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            isResizeHandleClicked(mouseX, mouseY) {
-                const handleAngle = Math.PI / 4;
-                const handleX = this.x + this.radius * Math.cos(handleAngle);
-                const handleY = this.y + this.radius * Math.sin(handleAngle);
-                return Math.hypot(mouseX - handleX, mouseY - handleY) < (12 / view.zoom);
-            }
-            isBodyClicked(mouseX, mouseY) {
-                // Check if click is near the border of the circle for dragging
-                const dist = Math.hypot(mouseX - this.x, mouseY - this.y);
-                const hitWidth = 15 / view.zoom; // Make the border easier to click
-                return Math.abs(dist - this.radius) < hitWidth;
-            }
-        }
-
-        class Point {
-            constructor(x, y, type) {
-                this.id = null; this.x = x; this.y = y; this.type = type;
-                this.originalX = 0; this.originalY = 0;
-            }
-            draw(angle = 0) {
-                if (this.type === 'head') {
-                    ctx.save();
-                    ctx.translate(this.x, this.y); ctx.rotate(angle);
-                    ctx.fillStyle = COLORS.head;
-                    ctx.beginPath(); ctx.ellipse(0, 0, POINT_RADIUS * 1.2, POINT_RADIUS * 0.9, 0, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = 'white';
-                    ctx.beginPath(); ctx.arc(POINT_RADIUS * 0.5, -POINT_RADIUS * 0.4, 2, 0, Math.PI * 2); ctx.arc(POINT_RADIUS * 0.5, POINT_RADIUS * 0.4, 2, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = 'black';
-                    ctx.beginPath(); ctx.arc(POINT_RADIUS * 0.6, -POINT_RADIUS * 0.4, 1, 0, Math.PI * 2); ctx.arc(POINT_RADIUS * 0.6, POINT_RADIUS * 0.4, 1, 0, Math.PI * 2); ctx.fill();
-                    ctx.restore();
-                } else if (this.type === 'tail') {
-                    ctx.fillStyle = COLORS.tail;
-                    ctx.beginPath(); ctx.moveTo(this.x, this.y + POINT_RADIUS); ctx.lineTo(this.x - POINT_RADIUS, this.y - POINT_RADIUS / 2); ctx.lineTo(this.x + POINT_RADIUS, this.y - POINT_RADIUS / 2); ctx.closePath(); ctx.fill();
-                } else {
-                    ctx.beginPath(); ctx.arc(this.x, this.y, POINT_RADIUS, 0, Math.PI * 2);
-                    ctx.fillStyle = this.type === 'body' ? COLORS.body : COLORS[this.type];
-                    ctx.fill();
-                    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 2; ctx.stroke();
-                }
-            }
-            isClicked(mouseX, mouseY) {
-                return Math.hypot(mouseX - this.x, mouseY - this.y) < POINT_RADIUS * 1.2;
-            }
-        }
-
-        class Note {
-            constructor(text, attachedPointId) {
-                this.id = null; this.text = text; this.attachedPointId = attachedPointId;
-                this.width = 160; this.height = 100; this.originalWidth = 0; this.originalHeight = 0;
-                this.offsetX = 40; this.offsetY = -50; this.originalOffsetX = 0; this.originalOffsetY = 0;
-            }
-            wrapText(context, text, x, y, maxWidth, lineHeight) {
-                const words = text.split(' '); let line = '';
-                context.font = NOTE_FONT; context.textAlign = 'left'; context.textBaseline = 'top';
-                for(let n = 0; n < words.length; n++) {
-                    const testLine = line + words[n] + ' ';
-                    const metrics = context.measureText(testLine);
-                    if (metrics.width > maxWidth && n > 0) {
-                        context.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
-                    } else { line = testLine; }
-                }
-                context.fillText(line, x, y);
-            }
-            draw(parentPoint) {
-                const noteX = parentPoint.x + this.offsetX, noteY = parentPoint.y + this.offsetY;
-                ctx.beginPath(); ctx.moveTo(parentPoint.x, parentPoint.y); ctx.lineTo(noteX, noteY + this.height / 2);
-                ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 2; ctx.stroke();
-                ctx.fillStyle = COLORS.noteBg; ctx.strokeStyle = COLORS.noteBorder; ctx.lineWidth = 1.5;
-                ctx.fillRect(noteX, noteY, this.width, this.height); ctx.strokeRect(noteX, noteY, this.width, this.height);
-                const isLink = isValidUrl(this.text);
-                ctx.fillStyle = isLink ? COLORS.link : COLORS.text;
-                this.wrapText(ctx, this.text, noteX + 8, noteY + 8, this.width - 24, 18);
-                const deleteIconX = noteX + this.width - 10, deleteIconY = noteY + 10, iconSize = 6;
-                ctx.beginPath(); ctx.moveTo(deleteIconX - iconSize, deleteIconY - iconSize); ctx.lineTo(deleteIconX + iconSize, deleteIconY + iconSize);
-                ctx.moveTo(deleteIconX + iconSize, deleteIconY - iconSize); ctx.lineTo(deleteIconX - iconSize, deleteIconY + iconSize);
-                ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 2; ctx.stroke();
-                if (isLink) {
-                    const linkIconX = noteX + this.width - 12, linkIconY = noteY + this.height - 12;
-                    ctx.strokeStyle = COLORS.link; ctx.lineWidth = 1.5; ctx.strokeRect(linkIconX, linkIconY, 6, 6);
-                    ctx.beginPath(); ctx.moveTo(linkIconX + 3, linkIconY); ctx.lineTo(linkIconX + 9, linkIconY - 6);
-                    ctx.moveTo(linkIconX + 4, linkIconY - 6); ctx.lineTo(linkIconX + 9, linkIconY - 6); ctx.lineTo(linkIconX + 9, linkIconY - 1); ctx.stroke();
-                }
-                const resizeHandleX = noteX + this.width, resizeHandleY = noteY + this.height;
-                ctx.fillStyle = '#9CA3AF';
-                ctx.beginPath(); ctx.moveTo(resizeHandleX, resizeHandleY - 10); ctx.lineTo(resizeHandleX - 10, resizeHandleY); ctx.lineTo(resizeHandleX, resizeHandleY); ctx.closePath(); ctx.fill();
-            }
-            isBodyClicked(mouseX, mouseY, p) { const nX = p.x + this.offsetX, nY = p.y + this.offsetY; return mouseX > nX && mouseX < nX + this.width && mouseY > nY && mouseY < nY + this.height; }
-            isDeleteClicked(mouseX, mouseY, p) { const nX = p.x + this.offsetX, nY = p.y + this.offsetY, dX = nX + this.width - 10, dY = nY + 10, hA = 10; return mouseX > dX - hA && mouseX < dX + hA && mouseY > dY - hA && mouseY < dY + hA; }
-            isLinkIconClicked(mouseX, mouseY, p) { const nX = p.x + this.offsetX, nY = p.y + this.offsetY, lX = nX + this.width - 12, lY = nY + this.height - 12, hA = 12; return mouseX > lX - hA && mouseX < lX + hA && mouseY > lY - hA && mouseY < lY + hA; }
-            isResizeClicked(mouseX, mouseY, p) { const nX = p.x + this.offsetX, nY = p.y + this.offsetY, rX = nX + this.width, rY = nY + this.height, hA = 15; return mouseX > rX - hA && mouseX < rX + hA && mouseY > rY - hA && mouseY < rY + hA; }
-        }
-        
-        // --- CORE DRAWING FUNCTIONS ---
-        function resizeCanvas() { canvas.width = parentContainer.clientWidth; canvas.height = parentContainer.clientHeight; draw(); }
-
-        function draw() {
-            if (!ctx) return;
-            ctx.save();
-            ctx.fillStyle = COLORS.background; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.translate(canvas.width / 2, canvas.height / 2); ctx.scale(view.zoom, view.zoom);
-            ctx.translate(-canvas.width / 2, -canvas.height / 2); ctx.translate(-view.x, -view.y);
-            
-            zones.forEach(z => z.draw());
-            
-            if (draggingNewPointState.active && draggingNewPointState.dropTarget) {
-                const { snake, segmentIndex } = draggingNewPointState.dropTarget;
-                const p1 = snake.path[segmentIndex];
-                const p2 = snake.path[segmentIndex + 1];
-                if(p1 && p2) {
-                    ctx.beginPath();
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineTo(p2.x, p2.y);
-                    ctx.strokeStyle = COLORS.lineHighlight;
-                    ctx.lineWidth = 8;
-                    ctx.stroke();
-                }
-            }
-
-            snakes.forEach(s => {
-                if (s.path && s.path.length > 1) {
-                    ctx.beginPath(); ctx.moveTo(s.path[0].x, s.path[0].y);
-                    for (let i = 1; i < s.path.length; i++) { ctx.lineTo(s.path[i].x, s.path[i].y); }
-                    ctx.strokeStyle = s.color || COLORS.line;
-                    ctx.lineWidth = 4; ctx.stroke();
-                }
-            });
-            notes.forEach(n => { const p = points.find(pt => pt.id === n.attachedPointId); if (p) n.draw(p); });
-            points.forEach(p => {
-                let angle = 0;
-                const owner = snakes.find(s => s.path && s.path.some(sp => sp.id === p.id));
-                if (p.type === 'head' && owner && owner.path.length > 1) { angle = Math.atan2(owner.path[1].y - p.y, owner.path[1].x - p.x); }
-                p.draw(angle);
-            });
-            snakes.forEach(s => {
-                if (s.path && s.path.length > 0) {
-                    const head = s.path[0];
-                    ctx.fillStyle = COLORS.text; ctx.font = LABEL_FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-                    ctx.fillText(s.name, head.x, head.y - POINT_RADIUS - 5);
-                }
-            });
-            if (selectedPoint) {
-                ctx.strokeStyle = COLORS.selection; ctx.lineWidth = 3 / view.zoom;
-                ctx.beginPath(); ctx.arc(selectedPoint.x, selectedPoint.y, POINT_RADIUS * 1.5, 0, Math.PI * 2); ctx.stroke();
-            }
-
-            if (draggingNewPointState.active) {
-                ctx.beginPath();
-                ctx.arc(draggingNewPointState.x, draggingNewPointState.y, POINT_RADIUS, 0, Math.PI * 2);
-                ctx.fillStyle = draggingNewPointState.dropTarget ? '#22C55E' : 'rgba(0,0,0,0.5)';
-                ctx.fill();
-            }
-            
-            if (isDraggingNewZone) {
-                ctx.strokeStyle = COLORS.zoneStroke;
-                ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.arc(newZonePreview.x, newZonePreview.y, newZonePreview.radius, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            if (isDraggingNewSnake) {
-                ctx.globalAlpha = 0.6;
-                ctx.beginPath();
-                ctx.moveTo(newSnakePreview.head.x, newSnakePreview.head.y);
-                ctx.lineTo(newSnakePreview.body.x, newSnakePreview.body.y);
-                ctx.lineTo(newSnakePreview.tail.x, newSnakePreview.tail.y);
-                ctx.strokeStyle = COLORS.line;
-                ctx.lineWidth = 4;
-                ctx.stroke();
-                const tempHead = new Point(newSnakePreview.head.x, newSnakePreview.head.y, 'head');
-                const tempBody = new Point(newSnakePreview.body.x, newSnakePreview.body.y, 'body');
-                const tempTail = new Point(newSnakePreview.tail.x, newSnakePreview.tail.y, 'tail');
-                tempHead.draw(Math.PI * 1.5);
-                tempBody.draw();
-                tempTail.draw();
-                ctx.globalAlpha = 1.0;
-            }
-
-            ctx.restore();
-        }
-
-        function getPointAt(worldX, worldY) {
-            for (let i = points.length - 1; i >= 0; i--) { if (points[i].isClicked(worldX, worldY)) return points[i]; }
-            return null;
-        }
-
-        function findClosestLineSegment(worldX, worldY) {
-            let closest = { dist: Infinity, snake: null, segmentIndex: -1, point: null };
-            for (const snake of snakes) {
-                if (!snake.path || snake.path.length < 2) continue;
-                for (let i = 0; i < snake.path.length - 1; i++) {
-                    const p1 = snake.path[i];
-                    const p2 = snake.path[i + 1];
-                    const dx = p2.x - p1.x;
-                    const dy = p2.y - p1.y;
-                    const lenSq = dx * dx + dy * dy;
-                    let t = ((worldX - p1.x) * dx + (worldY - p1.y) * dy) / lenSq;
-                    t = Math.max(0, Math.min(1, t));
-                    const closestPoint = { x: p1.x + t * dx, y: p1.y + t * dy };
-                    const distSq = (worldX - closestPoint.x) ** 2 + (worldY - closestPoint.y) ** 2;
-                    if (distSq < closest.dist) {
-                        closest = { dist: distSq, snake: snake, segmentIndex: i, point: closestPoint };
-                    }
-                }
-            }
-            if (closest.dist < (LINE_HIT_WIDTH / view.zoom)**2) return closest;
-            return null;
-        }
-
-
-        // --- EVENT HANDLERS ---
-        function handleMouseDown(e) {
-            e.preventDefault(); potentialDrag = null; if (e.button !== 0) return;
-            const worldCoords = screenToWorld(e.offsetX, e.offsetY); mouseDownCoords = worldCoords;
-            
-            if (e.shiftKey) {
-                const clickedPoint = getPointAt(worldCoords.x, worldCoords.y);
-                let snakeToDrag = null;
-                if (clickedPoint) {
-                    snakeToDrag = snakes.find(s => s.path && s.path.some(p => p.id === clickedPoint.id));
-                } else {
-                    const closestLine = findClosestLineSegment(worldCoords.x, worldCoords.y);
-                    if (closestLine) snakeToDrag = closestLine.snake;
-                }
-                if (snakeToDrag) {
-                    potentialDrag = { type: 'snake-drag', target: snakeToDrag };
-                    snakeToDrag.path.forEach(p => { p.originalX = p.x; p.originalY = p.y; });
-                    canvas.style.cursor = 'move';
-                    return;
-                }
-            }
-            
-            for (let i = zones.length - 1; i >= 0; i--) {
-                const zone = zones[i];
-                if (zone.isResizeHandleClicked(worldCoords.x, worldCoords.y)) {
-                    potentialDrag = { type: 'zone-resize', target: zone };
-                    zone.originalRadius = zone.radius;
-                    canvas.style.cursor = 'nwse-resize';
-                    return;
-                }
-                if (zone.isBodyClicked(worldCoords.x, worldCoords.y)) {
-                    potentialDrag = { type: 'zone-drag', target: zone };
-                    zone.originalX = zone.x;
-                    zone.originalY = zone.y;
-                    canvas.style.cursor = 'move';
-                    return;
-                }
-            }
-
-            for (let i = notes.length - 1; i >= 0; i--) {
-                const note = notes[i], p = points.find(pt => pt.id === note.attachedPointId);
-                if (p) {
-                    if (note.isDeleteClicked(worldCoords.x, worldCoords.y, p)) { deleteDoc(doc(notesCollection, note.id)); mouseDownCoords = null; return; }
-                    if (note.isResizeClicked(worldCoords.x, worldCoords.y, p)) { potentialDrag = { type: 'note-resize', target: note }; note.originalWidth = note.width; note.originalHeight = note.height; canvas.style.cursor = 'nwse-resize'; return; }
-                    if (isValidUrl(note.text) && note.isLinkIconClicked(worldCoords.x, worldCoords.y, p)) { window.open(note.text, '_blank'); mouseDownCoords = null; return; }
-                    if (note.isBodyClicked(worldCoords.x, worldCoords.y, p)) { potentialDrag = { type: 'note-drag', target: note }; note.originalOffsetX = note.offsetX; note.originalOffsetY = note.offsetY; canvas.style.cursor = 'grabbing'; return; }
-                }
-            }
-            const clickedPoint = getPointAt(worldCoords.x, worldCoords.y);
-            if (clickedPoint) { potentialDrag = { type: 'point', target: clickedPoint }; canvas.style.cursor = 'grabbing'; return; }
-            
-            if (selectedPoint) { selectedPoint = null; draw(); }
-            potentialDrag = { type: 'pan' }; panStart = { x: e.clientX, y: e.clientY }; canvas.style.cursor = 'grabbing';
-        }
-        
-        function handleMouseMove(e) {
-            e.preventDefault();
-            const activeDrag = isDraggingPoint || isDraggingSnake || isResizingNote || isDraggingNote || isPanning || isResizingZone || isDraggingZone;
-            if (activeDrag) {
-                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-                if (isPanning) { const dx = e.clientX - panStart.x, dy = e.clientY - panStart.y; view.x -= dx / view.zoom; view.y -= dy / view.zoom; panStart = { x: e.clientX, y: e.clientY }; }
-                else if (isResizingNote && resizedNote) { const dX = worldCoords.x - mouseDownCoords.x, dY = worldCoords.y - mouseDownCoords.y; resizedNote.width = Math.max(MIN_NOTE_WIDTH, resizedNote.originalWidth + dX); resizedNote.height = Math.max(MIN_NOTE_HEIGHT, resizedNote.originalHeight + dY); }
-                else if (isDraggingNote && draggedNote) { const dX = worldCoords.x - mouseDownCoords.x, dY = worldCoords.y - mouseDownCoords.y; draggedNote.offsetX = draggedNote.originalOffsetX + dX; draggedNote.offsetY = draggedNote.originalOffsetY + dY; }
-                else if (isDraggingZone && draggedZone) { const dX = worldCoords.x - mouseDownCoords.x, dY = worldCoords.y - mouseDownCoords.y; draggedZone.x = draggedZone.originalX + dX; draggedZone.y = draggedZone.originalY + dY; }
-                else if (isResizingZone && resizedZone) { const newRadius = Math.hypot(worldCoords.x - resizedZone.x, worldCoords.y - resizedZone.y); resizedZone.radius = Math.max(MIN_ZONE_RADIUS, newRadius); }
-                else if (isDraggingPoint && draggedPoint) {
-                    let cX = worldCoords.x, cY = worldCoords.y;
-                    const owner = snakes.find(s => s.path && s.path.some(p => p.id === draggedPoint.id));
-                    if (owner) {
-                        const idx = owner.path.findIndex(p => p.id === draggedPoint.id), prev = owner.path[idx - 1], next = owner.path[idx + 1];
-                        if (prev) { const d = Math.hypot(cX - prev.x, cY - prev.y); if (d > STRETCH_LIMIT) { const a = Math.atan2(cY - prev.y, cX - prev.x); cX = prev.x + STRETCH_LIMIT * Math.cos(a); cY = prev.y + STRETCH_LIMIT * Math.sin(a); } }
-                        if (next) { const d = Math.hypot(cX - next.x, cY - next.y); if (d > STRETCH_LIMIT) { const a = Math.atan2(cY - next.y, cX - next.x); cX = next.x + STRETCH_LIMIT * Math.cos(a); cY = next.y + STRETCH_LIMIT * Math.sin(a); } }
-                    }
-                    draggedPoint.x = cX; draggedPoint.y = cY;
-                } else if (isDraggingSnake && draggedSnake) { const dX = worldCoords.x - mouseDownCoords.x, dY = worldCoords.y - mouseDownCoords.y; draggedSnake.path.forEach(p => { p.x = p.originalX + dX; p.y = p.originalY + dY; }); }
-                draw(); return;
-            }
-            if (potentialDrag && mouseDownCoords) {
-                const dist = Math.hypot(screenToWorld(e.offsetX, e.offsetY).x - mouseDownCoords.x, screenToWorld(e.offsetX, e.offsetY).y - mouseDownCoords.y);
-                if (dist > DRAG_THRESHOLD) {
-                    switch (potentialDrag.type) {
-                        case 'point': isDraggingPoint = true; draggedPoint = potentialDrag.target; break;
-                        case 'note-resize': isResizingNote = true; resizedNote = potentialDrag.target; break;
-                        case 'note-drag': isDraggingNote = true; draggedNote = potentialDrag.target; break;
-                        case 'snake-drag': isDraggingSnake = true; draggedSnake = potentialDrag.target; break;
-                        case 'zone-drag': isDraggingZone = true; draggedZone = potentialDrag.target; break;
-                        case 'zone-resize': isResizingZone = true; resizedZone = potentialDrag.target; break;
-                        case 'pan': isPanning = true; break;
-                    }
-                    potentialDrag = null;
-                }
-            }
-        }
-
-        function handleMouseUp(e) {
-            e.preventDefault();
-            const wasClick = !isDraggingPoint && !isDraggingSnake && !isResizingNote && !isDraggingNote && !isPanning && !isDraggingZone && !isResizingZone;
-            if (wasClick && potentialDrag) {
-                selectedPoint = potentialDrag.type === 'point' ? potentialDrag.target : null;
-                draw();
-            }
-            if (isDraggingPoint && draggedPoint) { updateDoc(doc(pointsCollection, draggedPoint.id), { x: draggedPoint.x, y: draggedPoint.y }); }
-            if (isDraggingSnake && draggedSnake) { const b = writeBatch(db); draggedSnake.path.forEach(p => { b.update(doc(pointsCollection, p.id), { x: p.x, y: p.y }); }); b.commit(); }
-            if (isResizingNote && resizedNote) { updateDoc(doc(notesCollection, resizedNote.id), { width: resizedNote.width, height: resizedNote.height }); }
-            if (isDraggingNote && draggedNote) { updateDoc(doc(notesCollection, draggedNote.id), { offsetX: draggedNote.offsetX, offsetY: draggedNote.offsetY }); }
-            if (isDraggingZone && draggedZone) { updateDoc(doc(zonesCollection, draggedZone.id), { x: draggedZone.x, y: draggedZone.y }); }
-            if (isResizingZone && resizedZone) { updateDoc(doc(zonesCollection, resizedZone.id), { radius: resizedZone.radius }); }
-            isDraggingPoint = isDraggingSnake = isResizingNote = isPanning = isDraggingNote = isDraggingZone = isResizingZone = false;
-            draggedPoint = draggedSnake = resizedNote = draggedNote = draggedZone = resizedZone = null;
-            potentialDrag = null; mouseDownCoords = null; canvas.style.cursor = 'grab';
-        }
-
-        async function handleContextMenu(e) {
-            e.preventDefault();
-            const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-            const clickedPoint = getPointAt(worldCoords.x, worldCoords.y);
-            if(clickedPoint) {
-                const existingNote = notes.find(n => n.attachedPointId === clickedPoint.id);
-                if(existingNote){ createNoteInput(existingNote); }
-                else {
-                    const newNoteData = { text: "Type something...", attachedPointId: clickedPoint.id, width: 160, height: 100, offsetX: 40, offsetY: -50 };
-                    try {
-                        await addDoc(notesCollection, newNoteData);
-                    } catch (error) { console.error("Error creating note:", error); }
-                }
-            }
-        }
-
-        function handleWheel(e) {
-            e.preventDefault();
-            const mousePos = { x: e.offsetX, y: e.offsetY };
-            const worldPosBeforeZoom = screenToWorld(mousePos.x, mousePos.y);
-            let newZoom = view.zoom * (e.deltaY < 0 ? 1.1 : 1/1.1);
-            view.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-            const worldPosAfterZoom = screenToWorld(mousePos.x, mousePos.y);
-            view.x += worldPosBeforeZoom.x - worldPosAfterZoom.x;
-            view.y += worldPosBeforeZoom.y - worldPosAfterZoom.y;
-            draw();
-        }
-        
-        function handleDoubleClick(e) {
-            e.preventDefault(); if (e.target !== canvas) return;
-            const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-            for (let i = notes.length - 1; i >= 0; i--) {
-                const note = notes[i], p = points.find(pt => pt.id === note.attachedPointId);
-                if (p && note.isBodyClicked(worldCoords.x, worldCoords.y, p)) { createNoteInput(note); return; }
-            }
-        }
-
-        async function removeBodyPoint(pointToRemove) {
-            if (!pointToRemove || pointToRemove.type !== 'body') return;
-            const ownerSnake = snakes.find(s => s.path && s.path.some(p => p.id === pointToRemove.id));
-            if (!ownerSnake) { console.warn("Could not find owner snake for point", pointToRemove.id); await deleteDoc(doc(pointsCollection, pointToRemove.id)); return; }
-            const newPathArray = ownerSnake.path.map(p => p.id).filter(id => id !== pointToRemove.id);
-            if (newPathArray.length < 2) { console.log("Cannot remove point, snake must have at least 2 points."); return; }
-            const batch = writeBatch(db);
-            batch.update(doc(snakesCollection, ownerSnake.id), { path: newPathArray });
-            batch.delete(doc(pointsCollection, pointToRemove.id));
-            const noteToDelete = notes.find(n => n.attachedPointId === pointToRemove.id);
-            if (noteToDelete) { batch.delete(doc(notesCollection, noteToDelete.id)); }
-            try { await batch.commit(); selectedPoint = null; } catch (error) { console.error("Error removing body point:", error); }
-        }
-
-        async function removeBranchSnakes(branchSnakes) {
-            const batch = writeBatch(db);
-            for (const snake of branchSnakes) {
-                batch.delete(doc(snakesCollection, snake.id));
-                const pointsToDelete = snake.path.slice(1);
-                for (const point of pointsToDelete) {
-                    batch.delete(doc(pointsCollection, point.id));
-                    const noteToDelete = notes.find(n => n.attachedPointId === point.id);
-                    if (noteToDelete) { batch.delete(doc(notesCollection, noteToDelete.id)); }
-                }
-            }
-            try { await batch.commit(); selectedPoint = null; } 
-            catch (error) { console.error("Error removing branches:", error); }
-        }
-
-        async function branchFromPoint(branchingPoint) {
-            if (!branchingPoint || branchingPoint.type !== 'body') return;
-            const ownerSnake = snakes.find(s => s.path && s.path.some(p => p.id === branchingPoint.id));
-            let newSnakeName = 'New Branch';
-            if (ownerSnake) {
-                const branchCount = snakes.filter(s => s.path && s.path[0]?.id === branchingPoint.id).length;
-                newSnakeName = `${ownerSnake.name.replace(/\s/g, '')} b${branchCount + 1}`;
-            }
-
-            const batch = writeBatch(db);
-            const newBodyData = { x: branchingPoint.x + 50, y: branchingPoint.y + 50, type: 'body' };
-            const newTailData = { x: branchingPoint.x + 50, y: branchingPoint.y + 150, type: 'tail' };
-            const newBodyRef = doc(collection(db, pointsCollection.path));
-            const newTailRef = doc(collection(db, pointsCollection.path));
-            batch.set(newBodyRef, newBodyData);
-            batch.set(newTailRef, newTailData);
-            const newSnakeData = {
-                name: newSnakeName,
-                path: [branchingPoint.id, newBodyRef.id, newTailRef.id],
-                color: '#FBBF24'
-            };
-            const newSnakeRef = doc(collection(db, snakesCollection.path));
-            batch.set(newSnakeRef, newSnakeData);
-            try { await batch.commit(); selectedPoint = null; } 
-            catch (error) { console.error("Error creating new branch:", error); }
-        }
-
-        async function handleKeyDown(e) {
-            if (['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName)) return;
-
-            if ((e.key === 'Backspace' || e.key === 'Delete') && selectedPoint) {
-                e.preventDefault();
-                const branches = snakes.filter(s => s.path[0]?.id === selectedPoint.id);
-                if (branches.length > 0) {
-                    showConfirmationModal(
-                        "This is a junction point. Delete the entire branch?",
-                        () => removeBranchSnakes(branches),
-                        "Yes, Delete Branch"
-                    );
-                } else {
-                    await removeBodyPoint(selectedPoint);
-                }
-            } else if (e.key === 'k' && selectedPoint) {
-                e.preventDefault();
-                await branchFromPoint(selectedPoint);
-            }
-        }
-
-        // --- UI/CONTROL LOGIC ---
-        function toggleTheme() {
-            if (currentTheme === 'light') {
-                currentTheme = 'dark'; 
-                COLORS = DARK_THEME; 
-                document.documentElement.classList.add('dark'); 
-            } else { 
-                currentTheme = 'light'; 
-                COLORS = LIGHT_THEME; 
-                document.documentElement.classList.remove('dark'); 
-            }
-            const batch = writeBatch(db);
-            zones.forEach(z => {
-                const newColor = { fill: COLORS.zoneFill, stroke: COLORS.zoneStroke };
-                batch.update(doc(zonesCollection, z.id), { color: newColor });
-            });
-            batch.commit().catch(e => console.error("Failed to update zone colors on theme change:", e));
-        }
-
-        function showConfirmationModal(message, onConfirm, confirmText = 'Confirm') {
-            document.getElementById('confirmation-modal-overlay')?.remove();
-            const overlay = document.createElement('div');
-            overlay.id = 'confirmation-modal-overlay';
-            overlay.className = 'fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4';
-            const panel = document.createElement('div');
-            panel.className = 'modal-panel bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm transform opacity-0 translate-y-4';
-            const text = document.createElement('p');
-            text.className = 'text-gray-800 dark:text-gray-200 mb-6 text-lg';
-            text.textContent = message;
-            const btnContainer = document.createElement('div');
-            btnContainer.className = 'flex justify-end space-x-3';
-            const cancelBtn = document.createElement('button');
-            cancelBtn.textContent = 'Cancel';
-            cancelBtn.className = 'px-5 py-2 bg-gray-200 dark:bg-gray-600 dark:text-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400';
-            const confirmBtn = document.createElement('button');
-            confirmBtn.textContent = confirmText;
-            confirmBtn.className = 'px-5 py-2 bg-red-500 text-white font-semibold rounded-md hover:bg-red-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400';
-            btnContainer.append(cancelBtn, confirmBtn);
-            panel.append(text, btnContainer);
-            overlay.appendChild(panel);
-            document.body.appendChild(overlay);
-            setTimeout(() => { panel.classList.remove('opacity-0', 'translate-y-4'); panel.classList.add('opacity-100', 'translate-y-0'); }, 10);
-            const closeModal = () => { panel.classList.add('opacity-0'); setTimeout(() => overlay.remove(), 200); };
-            cancelBtn.addEventListener('click', closeModal);
-            confirmBtn.addEventListener('click', () => { onConfirm(); closeModal(); });
-            overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-        }
-
-        function createNoteInput(note) {
-            document.getElementById('note-editor')?.remove();
-            const parentPoint = points.find(p => p.id === note.attachedPointId); if (!parentPoint) return;
-            const screenPos = worldToScreen(parentPoint.x + note.offsetX, parentPoint.y + note.offsetY);
-            const screenWidth = note.width * view.zoom, screenHeight = note.height * view.zoom;
-            const textarea = document.createElement('textarea');
-            textarea.id = 'note-editor'; textarea.value = note.text === "Type something..." ? "" : note.text;
-            textarea.style.position = 'absolute'; textarea.style.left = `${canvas.offsetLeft + screenPos.x}px`;
-            textarea.style.top = `${canvas.offsetTop + screenPos.y}px`; textarea.style.width = `${screenWidth}px`;
-            textarea.style.height = `${screenHeight}px`; textarea.style.zIndex = '30';
-            textarea.className = 'p-2 border-2 border-blue-500 rounded-md shadow-lg focus:outline-none bg-yellow-50 dark:bg-yellow-900/80 dark:text-white';
-            parentContainer.appendChild(textarea); textarea.focus(); textarea.select();
-            const finishEditing = () => {
-                if(document.body.contains(textarea)) {
-                    const newText = textarea.value.trim() === '' ? 'Type something...' : textarea.value;
-                    if (note.text !== newText) { updateDoc(doc(notesCollection, note.id), { text: newText }); }
-                    parentContainer.removeChild(textarea);
-                }
-            };
-            textarea.addEventListener('blur', finishEditing);
-            textarea.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEditing(); } else if (e.key === 'Escape') { finishEditing(); } });
-        }
-
-        function showRenameInput(menuContainer, item, collection) {
-            const toggleButton = menuContainer.querySelector('button');
-            const dropdownContent = menuContainer.querySelector('.dropdown-content');
-            dropdownContent.classList.add('hidden');
-            toggleButton.style.display = 'none';
-            const input = document.createElement('input');
-            input.id = 'item-name-editor';
-            input.type = 'text';
-            input.value = item.name;
-            input.className = 'w-full px-3 py-2 bg-white dark:bg-gray-600 border border-blue-400 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400';
-            menuContainer.insertBefore(input, toggleButton);
-            input.focus();
-            input.select();
-            const finishRename = () => {
-                const newName = input.value.trim();
-                if (newName && newName !== item.name) {
-                    updateDoc(doc(collection, item.id), { name: newName });
-                }
-                menuContainer.removeChild(input);
-                toggleButton.style.display = 'block';
-            };
-            input.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') finishRename(); });
-            input.addEventListener('blur', finishRename);
-        }
-
-        function createDropdownMenu(item, container, actions) {
-            const menuContainer = document.createElement('div');
-            menuContainer.className = 'relative item-menu';
-            menuContainer.dataset.id = item.id;
-            const toggleButton = document.createElement('button');
-            toggleButton.innerHTML = `${item.name} <span class="text-xs">▼</span>`;
-            toggleButton.className = 'w-full text-left px-3 py-2 bg-gray-200 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400';
-            
-            const dropdownContent = document.createElement('div');
-            dropdownContent.className = 'dropdown-content absolute left-0 right-0 mt-1 bg-white border rounded-md shadow-lg p-2 space-y-1 hidden z-10';
-            
-            actions.forEach((action, index) => {
-                if (action.isDivider) {
-                    dropdownContent.innerHTML += `<div class="border-t my-1 dark:border-gray-600"></div>`;
-                } else {
-                    const button = document.createElement('button');
-                    button.dataset.action = action.name;
-                    button.className = `w-full text-left px-3 py-1.5 text-sm ${action.style} rounded-md`;
-                    button.textContent = action.label;
-                    dropdownContent.appendChild(button);
-                }
-            });
-
-            menuContainer.append(toggleButton, dropdownContent);
-            container.appendChild(menuContainer);
-        }
-
-        async function removeSnake(snakeId) {
-            const snakeToRemove = snakes.find(s => s.id === snakeId);
-            if (!snakeToRemove) return;
-            showConfirmationModal(
-                "Are you sure you want to delete this snake? This will also remove all its points and notes.",
-                async () => {
-                    const batch = writeBatch(db);
-                    snakeToRemove.path.forEach(point => {
-                        if (point && point.id) {
-                            batch.delete(doc(pointsCollection, point.id));
-                            const noteToDelete = notes.find(n => n.attachedPointId === point.id);
-                            if (noteToDelete) batch.delete(doc(notesCollection, noteToDelete.id));
-                        }
-                    });
-                    batch.delete(doc(snakesCollection, snakeId));
-                    try { await batch.commit(); } catch (error) { console.error("Error removing snake:", error); }
-                }, "Yes, Delete Snake"
-            );
-        }
-
-        async function removeZone(zoneId) {
-            if (!zoneId) return;
-            showConfirmationModal(
-                "Are you sure you want to delete this zone?",
-                async () => {
-                    try { await deleteDoc(doc(zonesCollection, zoneId)); } 
-                    catch (error) { console.error("Error removing zone:", error); }
-                }, "Yes, Delete Zone"
-            );
-        }
-
-        snakeControlsContainer.addEventListener('click', e => {
-            const button = e.target.closest('button'); if (!button) return;
-            const menuContainer = e.target.closest('.item-menu'); if (!menuContainer) return;
-            if (button === menuContainer.querySelector('button')) { menuContainer.querySelector('.dropdown-content').classList.toggle('hidden'); return; }
-            const action = button.dataset.action;
-            const snakeId = menuContainer.dataset.id;
-            const snake = snakes.find(s => s.id === snakeId);
-            if (action === 'rename') showRenameInput(menuContainer, snake, snakesCollection);
-            else if (action === 'remove') removeSnake(snakeId);
-        });
-        
-        zoneControlsContainer.addEventListener('click', e => {
-            const button = e.target.closest('button'); if (!button) return;
-            const menuContainer = e.target.closest('.item-menu'); if (!menuContainer) return;
-            if (button === menuContainer.querySelector('button')) { menuContainer.querySelector('.dropdown-content').classList.toggle('hidden'); return; }
-            const action = button.dataset.action;
-            const zoneId = menuContainer.dataset.id;
-            const zone = zones.find(z => z.id === zoneId);
-            if (action === 'rename') showRenameInput(menuContainer, zone, zonesCollection);
-            else if (action === 'remove') removeZone(zoneId);
-        });
-
-        async function clearCollection(collectionRef) {
-             const batch = writeBatch(db); const snapshot = await getDocs(collectionRef);
-             snapshot.forEach(doc => batch.delete(doc.ref)); await batch.commit();
-        }
-
-        clearBoardBtn.addEventListener('click', () => {
-            showConfirmationModal('Are you sure you want to clear the entire board?', async () => {
-                await Promise.all([ 
-                    clearCollection(snakesCollection), 
-                    clearCollection(pointsCollection), 
-                    clearCollection(notesCollection), 
-                    clearCollection(zonesCollection), 
-                    setDoc(noteBoxDocRef, { content: '' }) ]);
-            }, 'Clear Board');
-        });
+        // --- APP STATE ---
+        let localNotes = new Map();
+        let localConnections = [];
+        let isDragging = false;
+        let isRotating = false;
+        let isResizing = false;
+        let activeNote = null;
+        let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
+        let isConnectMode = false;
+        let firstConnectionPoint = null;
+        let ghostNote = null;
+        const DRAG_THRESHOLD = 5;
+        const MIN_NOTE_WIDTH = 120;
+        const MIN_NOTE_HEIGHT = 100;
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const firebaseConfig = {
-             apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU", authDomain: "storyplanner-7ee69.firebaseapp.com",
-             projectId: "storyplanner-7ee69", storageBucket: "storyplanner-7ee69.appspot.com",
-             messagingSenderId: "45084211794", appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
-            };
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'detective-board-app';
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", projectId: "YOUR_PROJECT_ID" };
+
             const app = initializeApp(firebaseConfig);
-            db = getFirestore(app); auth = getAuth(app); setLogLevel('error');
-            snakesCollection = collection(db, `snakes`); 
-            pointsCollection = collection(db, `points`);
-            notesCollection = collection(db, `notes`);
-            zonesCollection = collection(db, `zones`);
-            noteBoxDocRef = doc(db, 'noteBox', 'mainNote');
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            const basePath = `artifacts/${appId}/public/data`;
+            notesCollection = collection(db, `${basePath}/points`);
+            connectionsCollection = collection(db, `${basePath}/snakes`);
+
             onAuthStateChanged(auth, user => {
-                if (user) { userInfoDiv.innerHTML = `<strong>Your ID:</strong> ${user.uid}`; setupRealtimeListeners(); }
-                else { userInfoDiv.textContent = 'Authenticating...'; }
+                if (user) {
+                    userId = user.uid;
+                    userInfoDiv.innerHTML = `<strong>Detective ID:</strong> ${userId.substring(0, 8)}...`;
+                    setupRealtimeListeners();
+                } else {
+                    userInfoDiv.textContent = 'Authenticating...';
+                }
             });
-            try { await signInAnonymously(auth); } catch (error) { console.error("Authentication failed:", error); userInfoDiv.textContent = 'Authentication failed.'; }
+
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                userInfoDiv.textContent = 'Authentication Failed.';
+            }
+        }
+
+        // --- REAL-TIME LISTENERS ---
+        function setupRealtimeListeners() {
+            onSnapshot(notesCollection, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    const noteData = { id: change.doc.id, ...change.doc.data() };
+                    if (change.type === "added" || change.type === "modified") {
+                        localNotes.set(noteData.id, noteData);
+                        createOrUpdateNoteElement(noteData);
+                    }
+                    if (change.type === "removed") {
+                        const element = document.getElementById(noteData.id);
+                        if (element) element.remove();
+                        localNotes.delete(noteData.id);
+                    }
+                });
+                renderConnections();
+            });
+
+            onSnapshot(connectionsCollection, (snapshot) => {
+                localConnections = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderConnections();
+            });
+        }
+
+        // --- DOM MANIPULATION & RENDERING ---
+        function createOrUpdateNoteElement(noteData) {
+            let noteEl = document.getElementById(noteData.id);
+            if (!noteEl) {
+                noteEl = document.createElement('div');
+                noteEl.id = noteData.id;
+                noteEl.className = 'note';
+                noteEl.innerHTML = `<div class="note-pin"></div><div class="note-content"></div><div class="resize-handle"></div>`;
+                board.appendChild(noteEl);
+                
+                if (!noteData.rotation) {
+                    const rotation = Math.random() * 10 - 5;
+                    updateDoc(doc(notesCollection, noteData.id), { rotation });
+                    noteData.rotation = rotation;
+                }
+                noteEl.addEventListener('mousedown', handleNoteMouseDown);
+                noteEl.addEventListener('click', handleNoteClick);
+            }
+            
+            noteEl.style.left = `${noteData.x || 50}px`;
+            noteEl.style.top = `${noteData.y || 50}px`;
+            noteEl.style.width = `${noteData.width || 200}px`;
+            noteEl.style.height = `${noteData.height || 150}px`;
+            noteEl.style.transform = `rotate(${noteData.rotation || 0}deg)`;
+            
+            const contentDiv = noteEl.querySelector('.note-content');
+            contentDiv.textContent = noteData.text || 'Click to edit...';
+        }
+
+        function renderConnections() {
+            connectionsSvg.innerHTML = '';
+            localConnections.forEach(conn => {
+                if (conn.path && conn.path.length >= 2) {
+                    for (let i = 0; i < conn.path.length - 1; i++) {
+                        const noteAData = localNotes.get(conn.path[i]);
+                        const noteBData = localNotes.get(conn.path[i+1]);
+
+                        if (noteAData && noteBData) {
+                            const noteAWidth = noteAData.width || 200;
+                            const noteAHeight = noteAData.height || 150;
+                            const noteBWidth = noteBData.width || 200;
+                            const noteBHeight = noteBData.height || 150;
+
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', noteAData.x + noteAWidth / 2);
+                            line.setAttribute('y1', noteAData.y + noteAHeight / 2);
+                            line.setAttribute('x2', noteBData.x + noteBWidth / 2);
+                            line.setAttribute('y2', noteBData.y + noteBHeight / 2);
+                            line.setAttribute('stroke', '#D53F8C');
+                            line.setAttribute('stroke-width', '4');
+                            line.setAttribute('stroke-dasharray', '10, 5');
+                            
+                            const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                            anim.setAttribute('attributeName', 'stroke-dashoffset');
+                            anim.setAttribute('from', '0');
+                            anim.setAttribute('to', '15');
+                            anim.setAttribute('dur', '0.5s');
+                            anim.setAttribute('repeatCount', 'indefinite');
+                            line.appendChild(anim);
+
+                            connectionsSvg.appendChild(line);
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- EVENT HANDLERS ---
+        addNoteBtn.addEventListener('mousedown', startAddNoteDrag);
+        
+        clearBoardBtn.addEventListener('click', async () => {
+            if(confirm('Are you sure you want to clear the entire board? This cannot be undone.')) {
+                const batch = writeBatch(db);
+                const notesSnapshot = await getDocs(notesCollection);
+                notesSnapshot.forEach(doc => batch.delete(doc.ref));
+                const connectionsSnapshot = await getDocs(connectionsCollection);
+                connectionsSnapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+        });
+
+        connectModeBtn.addEventListener('click', () => {
+            isConnectMode = !isConnectMode;
+            if (isConnectMode) {
+                connectModeBtn.textContent = 'Cancel Connect';
+                connectModeBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                connectModeBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                messageBox.classList.remove('hidden');
+            } else {
+                connectModeBtn.textContent = 'Connect Evidence';
+                connectModeBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                connectModeBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+                if(firstConnectionPoint) document.getElementById(firstConnectionPoint).style.outline = 'none';
+                firstConnectionPoint = null;
+                messageBox.classList.add('hidden');
+            }
+        });
+
+        function handleNoteClick(e) {
+            if (e.detail === 3) {
+                startEditing(e);
+                return;
+            }
+
+            const noteEl = e.currentTarget;
+
+            if (isConnectMode) {
+                if (!firstConnectionPoint) {
+                    firstConnectionPoint = noteEl.id;
+                    noteEl.style.outline = '4px solid #FBBF24';
+                    messageBox.querySelector('p').textContent = "Selected first note. Click another to connect.";
+                } else {
+                    if (firstConnectionPoint === noteEl.id) return;
+                    addDoc(connectionsCollection, { path: [firstConnectionPoint, noteEl.id] });
+                    document.getElementById(firstConnectionPoint).style.outline = 'none';
+                    isConnectMode = false;
+                    connectModeBtn.click();
+                    messageBox.querySelector('p').textContent = "Click two evidence notes to connect them with yarn.";
+                    firstConnectionPoint = null;
+                }
+            }
         }
         
-        function processAndDraw(localSnakes, localPoints, localNotes, localZones) {
-            points = localPoints.map(pData => { const p = new Point(pData.x, pData.y, pData.type); p.id = pData.id; return p; });
-            notes = localNotes.map(nData => { const n = new Note(nData.text, nData.attachedPointId); n.id = nData.id; n.width = nData.width; n.height = nData.height; n.offsetX = nData.offsetX; n.offsetY = nData.offsetY; return n; });
-            zones = localZones.map(zData => { const z = new Zone(zData.x, zData.y, zData.radius, zData.name, zData.color); z.id = zData.id; return z; });
-            const pointMap = new Map(points.map(p => [p.id, p]));
-            snakes = localSnakes.map(sData => { const s = { ...sData }; s.path = sData.path ? sData.path.map(id => pointMap.get(id)).filter(p => p) : []; return s; });
-            
-            snakeControlsContainer.innerHTML = '';
-            if (localSnakes.length > 0) {
-                snakeControlsContainer.innerHTML = `<h4 class="font-bold text-gray-600 dark:text-gray-400 text-md mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">Snakes</h4>`;
-                const snakeActions = [
-                    { name: 'rename', label: 'Rename', style: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' },
-                    { isDivider: true },
-                    { name: 'remove', label: 'Remove Snake', style: 'text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/50' }
-                ];
-                snakes.forEach(s => createDropdownMenu(s, snakeControlsContainer, snakeActions));
-            }
+        function startEditing(e) {
+            e.stopPropagation();
+            const noteEl = e.currentTarget;
+            const contentDiv = noteEl.querySelector('.note-content');
+            const currentText = localNotes.get(noteEl.id).text;
 
-            zoneControlsContainer.innerHTML = '';
-            if (localZones.length > 0) {
-                zoneControlsContainer.innerHTML = `<h4 class="font-bold text-gray-600 dark:text-gray-400 text-md mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">Zones</h4>`;
-                const zoneActions = [
-                    { name: 'rename', label: 'Rename', style: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' },
-                    { isDivider: true },
-                    { name: 'remove', label: 'Remove Zone', style: 'text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/50' }
-                ];
-                zones.forEach(z => createDropdownMenu(z, zoneControlsContainer, zoneActions));
-            }
-            
-            draw();
-        }
+            const textarea = document.createElement('textarea');
+            textarea.className = 'note-textarea';
+            textarea.value = currentText === 'New Evidence...' ? '' : currentText;
 
-        function setupRealtimeListeners() {
-            let localSnakes = [], localPoints = [], localNotes = [], localZones = [];
-            const redrawAll = () => processAndDraw(localSnakes, localPoints, localNotes, localZones);
+            contentDiv.replaceWith(textarea);
+            textarea.focus();
+            textarea.select();
 
-            onSnapshot(snakesCollection, (s) => { localSnakes = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); }, (e) => console.error("Snakes listener error:", e));
-            onSnapshot(pointsCollection, (s) => { localPoints = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); }, (e) => console.error("Points listener error:", e));
-            onSnapshot(notesCollection, (s) => { localNotes = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); }, (e) => console.error("Notes listener error:", e));
-            onSnapshot(zonesCollection, (s) => { localZones = s.docs.map(d => ({ id: d.id, ...d.data() })); redrawAll(); }, (e) => console.error("Zones listener error:", e));
-            onSnapshot(noteBoxDocRef, (d) => { if (d.exists()) { const data = d.data(); if (noteBoxInput.value !== data.content) { noteBoxInput.value = data.content; } } }, (e) => console.error("Note box listener error:", e));
-        }
-
-        function init() {
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            canvas.addEventListener('mousedown', handleMouseDown);
-            canvas.addEventListener('mousemove', handleMouseMove);
-            canvas.addEventListener('mouseup', handleMouseUp);
-            canvas.addEventListener('mouseout', handleMouseUp);
-            canvas.addEventListener('wheel', handleWheel);
-            canvas.addEventListener('contextmenu', handleContextMenu);
-            canvas.addEventListener('dblclick', handleDoubleClick);
-            window.addEventListener('keydown', handleKeyDown);
-            toggleThemeBtn.addEventListener('click', toggleTheme);
-            
-            const saveNoteBox = debounce(() => { 
-                setDoc(noteBoxDocRef, { content: noteBoxInput.value }); 
-            }, 500);
-            noteBoxInput.addEventListener('input', saveNoteBox);
-            
-            function handleNewSnakeDragMove(e) {
-                e.preventDefault();
-                if (!isDraggingNewSnake) return;
-                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-                newSnakePreview.head = { x: worldCoords.x, y: worldCoords.y - 100 };
-                newSnakePreview.body = { x: worldCoords.x, y: worldCoords.y };
-                newSnakePreview.tail = { x: worldCoords.x, y: worldCoords.y + 100 };
-                draw();
-            }
-
-            async function handleNewSnakeDragEnd(e) {
-                e.preventDefault();
-                if (!isDraggingNewSnake) return;
-                window.removeEventListener('mousemove', handleNewSnakeDragMove);
-                window.removeEventListener('mouseup', handleNewSnakeDragEnd);
-                isDraggingNewSnake = false;
-                document.body.style.cursor = 'default';
-                const batch = writeBatch(db);
-                const headData = { x: newSnakePreview.head.x, y: newSnakePreview.head.y, type: 'head' };
-                const bodyData = { x: newSnakePreview.body.x, y: newSnakePreview.body.y, type: 'body' };
-                const tailData = { x: newSnakePreview.tail.x, y: newSnakePreview.tail.y, type: 'tail' };
-                const headRef = doc(collection(db, pointsCollection.path));
-                const bodyRef = doc(collection(db, pointsCollection.path));
-                const tailRef = doc(collection(db, pointsCollection.path));
-                batch.set(headRef, headData); batch.set(bodyRef, bodyData); batch.set(tailRef, tailData);
-                const snakeData = { name: `Snake ${snakes.filter(s => s.name.startsWith("Snake")).length + 1}`, path: [headRef.id, bodyRef.id, tailRef.id] };
-                batch.set(doc(collection(db, snakesCollection.path)), snakeData);
-                try { await batch.commit(); } catch (error) { console.error("Error creating new snake:", error); }
-                newSnakePreview = { head: {x:0, y:0}, body: {x:0, y:0}, tail: {x:0, y:0} };
-                draw();
-            }
-            
-            createSnakeBtn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                isDraggingNewSnake = true;
-                document.body.style.cursor = 'grabbing';
-                window.addEventListener('mousemove', handleNewSnakeDragMove);
-                window.addEventListener('mouseup', handleNewSnakeDragEnd);
-            });
-            
-             function handleNewZoneDragMove(e) {
-                e.preventDefault();
-                if (!isDraggingNewZone) return;
-                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-                newZonePreview.x = worldCoords.x;
-                newZonePreview.y = worldCoords.y;
-                draw();
-            }
-
-            async function handleNewZoneDragEnd(e) {
-                e.preventDefault();
-                if (!isDraggingNewZone) return;
-                window.removeEventListener('mousemove', handleNewZoneDragMove);
-                window.removeEventListener('mouseup', handleNewZoneDragEnd);
-                isDraggingNewZone = false;
-                document.body.style.cursor = 'default';
-                const newZoneData = {
-                    name: `Zone ${zones.length + 1}`,
-                    x: newZonePreview.x,
-                    y: newZonePreview.y,
-                    radius: newZonePreview.radius,
-                    color: { fill: COLORS.zoneFill, stroke: COLORS.zoneStroke }
-                };
-                try { await addDoc(zonesCollection, newZoneData); } 
-                catch (error) { console.error("Error creating new zone:", error); }
-                draw();
-            }
-
-            addZoneBtn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                isDraggingNewZone = true;
-                document.body.style.cursor = 'grabbing';
-                window.addEventListener('mousemove', handleNewZoneDragMove);
-                window.addEventListener('mouseup', handleNewZoneDragEnd);
-            });
-
-            function handleNewPointDragMove(e) {
-                e.preventDefault();
-                const worldCoords = screenToWorld(e.offsetX, e.offsetY);
-                draggingNewPointState.x = worldCoords.x;
-                draggingNewPointState.y = worldCoords.y;
-                draggingNewPointState.dropTarget = findClosestLineSegment(worldCoords.x, worldCoords.y);
-                if (draggingNewPointState.dropTarget) {
-                    draggingNewPointState.x = draggingNewPointState.dropTarget.point.x;
-                    draggingNewPointState.y = draggingNewPointState.dropTarget.point.y;
+            const finishEditing = () => {
+                const newText = textarea.value.trim();
+                textarea.replaceWith(contentDiv);
+                if (newText !== currentText && newText !== '') {
+                    updateDoc(doc(notesCollection, noteEl.id), { text: newText });
+                } else if (newText === '') {
+                    updateDoc(doc(notesCollection, noteEl.id), { text: 'New Evidence...' });
                 }
-                draw();
+            };
+            
+            textarea.addEventListener('blur', finishEditing);
+            textarea.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') {
+                    textarea.value = currentText;
+                    finishEditing();
+                }
+            });
+        }
+
+        // --- INTERACTION LOGIC (DRAG, ROTATE, RESIZE) ---
+        function handleNoteMouseDown(e) {
+            if (e.target.tagName === 'TEXTAREA' || isConnectMode) return;
+            
+            activeNote = e.currentTarget;
+            e.preventDefault();
+
+            if (e.target.classList.contains('resize-handle')) {
+                isResizing = true;
+                activeNote.classList.add('is-resizing');
+                window.addEventListener('mousemove', onResize);
+            } else if (e.target.classList.contains('note-pin')) {
+                isRotating = true;
+                activeNote.classList.add('is-rotating');
+                window.addEventListener('mousemove', onRotate);
+            } else {
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                const rect = activeNote.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+                window.addEventListener('mousemove', onDrag);
+            }
+            window.addEventListener('mouseup', endInteraction);
+        }
+
+        function onDrag(e) {
+            if (!activeNote || isRotating || isResizing) return;
+            
+            if (!isDragging) {
+                const dx = e.clientX - dragStartX;
+                const dy = e.clientY - dragStartY;
+                if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+                    isDragging = true;
+                    activeNote.classList.add('is-dragging');
+                    board.appendChild(activeNote);
+                }
             }
 
-            async function handleNewPointDragEnd(e) {
-                window.removeEventListener('mousemove', handleNewPointDragMove);
-                window.removeEventListener('mouseup', handleNewPointDragEnd);
-                document.body.style.cursor = 'default';
+            if (isDragging) {
+                const newX = e.clientX - board.getBoundingClientRect().left - dragOffsetX;
+                const newY = e.clientY - board.getBoundingClientRect().top - dragOffsetY;
+
+                activeNote.style.left = `${newX}px`;
+                activeNote.style.top = `${newY}px`;
                 
-                if (draggingNewPointState.dropTarget) {
-                    const { snake, segmentIndex, point } = draggingNewPointState.dropTarget;
-                    const newPointData = { x: point.x, y: point.y, type: 'body' };
-                    try {
-                        const newPointRef = await addDoc(pointsCollection, newPointData);
-                        const newPathArray = snake.path.map(p => p.id);
-                        newPathArray.splice(segmentIndex + 1, 0, newPointRef.id);
-                        await updateDoc(doc(snakesCollection, snake.id), { path: newPathArray });
-                    } catch (error) { console.error("Error adding new point:", error); }
+                const noteData = localNotes.get(activeNote.id);
+                if (noteData) {
+                    noteData.x = newX;
+                    noteData.y = newY;
+                    renderConnections();
                 }
-                draggingNewPointState.active = false;
-                draw();
             }
+        }
+        
+        function onResize(e) {
+            if (!isResizing || !activeNote) return;
 
-            addPointBtn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                draggingNewPointState.active = true;
-                const worldCoords = screenToWorld(e.clientX, e.clientY);
-                draggingNewPointState.x = worldCoords.x;
-                draggingNewPointState.y = worldCoords.y;
-                document.body.style.cursor = 'grabbing';
-                window.addEventListener('mousemove', handleNewPointDragMove);
-                window.addEventListener('mouseup', handleNewPointDragEnd);
-            });
+            const noteRect = activeNote.getBoundingClientRect();
+            let newWidth = e.clientX - noteRect.left;
+            let newHeight = e.clientY - noteRect.top;
 
+            newWidth = Math.max(MIN_NOTE_WIDTH, newWidth);
+            newHeight = Math.max(MIN_NOTE_HEIGHT, newHeight);
 
-            initFirebase();
+            activeNote.style.width = `${newWidth}px`;
+            activeNote.style.height = `${newHeight}px`;
+
+            const noteData = localNotes.get(activeNote.id);
+            if (noteData) {
+                noteData.width = newWidth;
+                noteData.height = newHeight;
+                renderConnections();
+            }
         }
 
-        init();
+        function onRotate(e) {
+            if (!isRotating || !activeNote) return;
+
+            const noteRect = activeNote.getBoundingClientRect();
+            const noteCenterX = noteRect.left + noteRect.width / 2;
+            const noteCenterY = noteRect.top + noteRect.height / 2;
+
+            const angleRad = Math.atan2(e.clientY - noteCenterY, e.clientX - noteCenterX);
+            const angleDeg = angleRad * (180 / Math.PI) + 90;
+
+            activeNote.style.transform = `rotate(${angleDeg}deg)`;
+            
+            const noteData = localNotes.get(activeNote.id);
+            if (noteData) {
+                noteData.rotation = angleDeg;
+            }
+        }
+        
+        function endInteraction(e) {
+            if (isDragging) {
+                const newX = parseFloat(activeNote.style.left);
+                const newY = parseFloat(activeNote.style.top);
+                updateDoc(doc(notesCollection, activeNote.id), { x: newX, y: newY });
+            }
+            if (isResizing) {
+                const newWidth = parseFloat(activeNote.style.width);
+                const newHeight = parseFloat(activeNote.style.height);
+                updateDoc(doc(notesCollection, activeNote.id), { width: newWidth, height: newHeight });
+            }
+            if (isRotating) {
+                const noteData = localNotes.get(activeNote.id);
+                if (noteData) {
+                    updateDoc(doc(notesCollection, activeNote.id), { rotation: noteData.rotation });
+                }
+            }
+            
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mousemove', onRotate);
+            window.removeEventListener('mousemove', onResize);
+            window.removeEventListener('mouseup', endInteraction);
+
+            if(activeNote) {
+                activeNote.classList.remove('is-dragging', 'is-rotating', 'is-resizing');
+            }
+
+            isDragging = isRotating = isResizing = false;
+            activeNote = null;
+        }
+
+        // --- DRAG AND DROP LOGIC (FOR ADDING NEW NOTES) ---
+        function startAddNoteDrag(e) {
+            e.preventDefault();
+            
+            ghostNote = document.createElement('div');
+            ghostNote.className = 'note';
+            ghostNote.style.position = 'absolute';
+            ghostNote.style.zIndex = '1000';
+            ghostNote.style.pointerEvents = 'none';
+            ghostNote.style.opacity = '0.7';
+            ghostNote.innerHTML = `<div class="note-pin"></div><div class="note-content">New Evidence...</div>`;
+            document.body.appendChild(ghostNote);
+
+            moveGhostNote(e);
+
+            window.addEventListener('mousemove', onAddNoteDrag);
+            window.addEventListener('mouseup', endAddNoteDrag);
+        }
+
+        function onAddNoteDrag(e) {
+            moveGhostNote(e);
+        }
+
+        function moveGhostNote(e) {
+            if (!ghostNote) return;
+            ghostNote.style.left = `${e.clientX - 100}px`;
+            ghostNote.style.top = `${e.clientY - 75}px`;
+        }
+
+        function endAddNoteDrag(e) {
+            window.removeEventListener('mousemove', onAddNoteDrag);
+            window.removeEventListener('mouseup', endAddNoteDrag);
+
+            if (ghostNote) {
+                ghostNote.remove();
+                ghostNote = null;
+            }
+
+            const boardRect = board.getBoundingClientRect();
+            if (e.clientX >= boardRect.left && e.clientX <= boardRect.right &&
+                e.clientY >= boardRect.top && e.clientY <= boardRect.bottom) {
+                
+                const dropX = e.clientX - boardRect.left - 100;
+                const dropY = e.clientY - boardRect.top - 75;
+
+                addDoc(notesCollection, {
+                    text: 'New Evidence...',
+                    x: dropX,
+                    y: dropY,
+                    rotation: Math.random() * 10 - 5,
+                    width: 200,
+                    height: 150
+                });
+            }
+        }
+
+        // --- STARTUP ---
+        initFirebase();
     </script>
 </body>
 </html>
