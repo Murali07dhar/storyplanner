@@ -136,6 +136,19 @@
             pointer-events: none;
         }
 
+        #connections-svg.delete-connection-mode {
+            pointer-events: all; /* Allow clicks on SVG */
+        }
+
+        #connections-svg.delete-connection-mode .connection-line {
+            stroke: #FBBF24; /* Highlight in yellow */
+            cursor: crosshair;
+        }
+
+        #connections-svg.delete-connection-mode .connection-line:hover {
+            stroke-width: 8px;
+        }
+
         #controls {
             font-family: 'Permanent Marker', cursive;
         }
@@ -156,6 +169,7 @@
         <button id="addNoteBtn" class="px-4 py-2 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg cursor-grab">Add Notebox</button>
         <button id="connectModeBtn" class="px-4 py-2 bg-red-500 text-white font-bold rounded-md hover:bg-red-600 transition-transform transform hover:scale-105 shadow-lg">Connect Notebox</button>
         <button id="deleteModeBtn" class="px-4 py-2 bg-gray-600 text-white font-bold rounded-md hover:bg-gray-700 transition-transform transform hover:scale-105 shadow-lg">Delete Notebox</button>
+        <button id="deleteConnectionModeBtn" class="px-4 py-2 bg-purple-500 text-white font-bold rounded-md hover:bg-purple-600 transition-transform transform hover:scale-105 shadow-lg">Delete Connection</button>
         <button id="toggleThemeBtn" class="px-4 py-2 bg-indigo-500 text-white font-bold rounded-md hover:bg-indigo-600 transition-transform transform hover:scale-105 shadow-lg">Toggle Theme</button>
         <button id="clearBoardBtn" class="px-4 py-2 bg-blue-500 text-white font-bold rounded-md hover:bg-blue-600 transition-transform transform hover:scale-105 shadow-lg">Clear Board</button>
     </div>
@@ -177,6 +191,7 @@
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
         const deleteModeBtn = document.getElementById('deleteModeBtn');
+        const deleteConnectionModeBtn = document.getElementById('deleteConnectionModeBtn');
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
         const connectionsSvg = document.getElementById('connections-svg');
@@ -199,6 +214,7 @@
         let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
         let isConnectMode = false;
         let isDeleteMode = false;
+        let isDeleteConnectionMode = false;
         let firstConnectionPoint = null;
         let ghostNote = null;
         const DRAG_THRESHOLD = 5;
@@ -316,6 +332,8 @@
                             const noteBHeight = noteBData.height || 150;
 
                             const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('class', 'connection-line');
+                            line.setAttribute('data-id', conn.id);
                             line.setAttribute('x1', noteAData.x + noteAWidth / 2);
                             line.setAttribute('y1', noteAData.y + noteAHeight / 2);
                             line.setAttribute('x2', noteBData.x + noteBWidth / 2);
@@ -324,14 +342,6 @@
                             line.setAttribute('stroke-width', '4');
                             line.setAttribute('stroke-dasharray', '10, 5');
                             
-                            const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
-                            anim.setAttribute('attributeName', 'stroke-dashoffset');
-                            anim.setAttribute('from', '0');
-                            anim.setAttribute('to', '15');
-                            anim.setAttribute('dur', '0.5s');
-                            anim.setAttribute('repeatCount', 'indefinite');
-                            line.appendChild(anim);
-
                             connectionsSvg.appendChild(line);
                         }
                     }
@@ -357,6 +367,7 @@
             isConnectMode = !isConnectMode;
             if (isConnectMode) {
                 if (isDeleteMode) deleteModeBtn.click();
+                if (isDeleteConnectionMode) deleteConnectionModeBtn.click();
                 connectModeBtn.textContent = 'Cancel Connect';
                 connectModeBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
                 connectModeBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
@@ -376,6 +387,7 @@
             document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable'));
             if (isDeleteMode) {
                 if (isConnectMode) connectModeBtn.click();
+                if (isDeleteConnectionMode) deleteConnectionModeBtn.click();
                 deleteModeBtn.textContent = 'Cancel Delete';
                 deleteModeBtn.classList.remove('bg-gray-600', 'hover:bg-gray-700');
                 deleteModeBtn.classList.add('bg-red-600', 'hover:bg-red-700');
@@ -383,6 +395,25 @@
                 deleteModeBtn.textContent = 'Delete Notebox';
                 deleteModeBtn.classList.add('bg-gray-600', 'hover:bg-gray-700');
                 deleteModeBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+            }
+        });
+
+        deleteConnectionModeBtn.addEventListener('click', () => {
+            isDeleteConnectionMode = !isDeleteConnectionMode;
+            connectionsSvg.classList.toggle('delete-connection-mode', isDeleteConnectionMode);
+            if (isDeleteConnectionMode) {
+                if (isConnectMode) connectModeBtn.click();
+                if (isDeleteMode) deleteModeBtn.click();
+                deleteConnectionModeBtn.textContent = 'Cancel Delete';
+                deleteConnectionModeBtn.classList.remove('bg-purple-500', 'hover:bg-purple-600');
+                deleteConnectionModeBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                messageBox.querySelector('p').textContent = "Click a connection line to delete it.";
+                messageBox.classList.remove('hidden');
+            } else {
+                deleteConnectionModeBtn.textContent = 'Delete Connection';
+                deleteConnectionModeBtn.classList.add('bg-purple-500', 'hover:bg-purple-600');
+                deleteConnectionModeBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                messageBox.classList.add('hidden');
             }
         });
 
@@ -472,7 +503,7 @@
 
         // --- INTERACTION LOGIC (DRAG, ROTATE, RESIZE) ---
         function handleNoteMouseDown(e) {
-            if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode) return;
+            if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode || isDeleteConnectionMode) return;
             
             activeNote = e.currentTarget;
             e.preventDefault();
@@ -650,6 +681,16 @@
                 });
             }
         }
+
+        connectionsSvg.addEventListener('click', (e) => {
+            if(isDeleteConnectionMode && e.target.classList.contains('connection-line')) {
+                const connectionId = e.target.getAttribute('data-id');
+                if (confirm('Are you sure you want to delete this connection?')) {
+                    deleteDoc(doc(connectionsCollection, connectionId));
+                    deleteConnectionModeBtn.click();
+                }
+            }
+        });
 
         // --- STARTUP ---
         initFirebase();
