@@ -15,51 +15,26 @@
             background-color: #3D352E; /* Dark wood color */
             user-select: none; /* Prevent text selection during drag */
             transition: background-color 0.3s ease-in-out;
-            margin: 0;
-            padding: 0;
         }
 
         .dark body {
             background-color: #1a202c;
         }
 
-        #board-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            overflow: hidden;
-            cursor: grab;
-        }
-        
-        #board-container.is-panning {
-            cursor: grabbing;
-        }
-
         #board {
             background-image: url('https://www.transparenttextures.com/patterns/cork-wallet.png');
             background-color: #C19A6B; /* Cork color */
-            position: absolute;
-            transform-origin: 0 0;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-            transition: background-color 0.3s ease-in-out, width 0.2s, height 0.2s;
+            transition: background-color 0.3s ease-in-out;
         }
 
         .dark #board {
             background-image: url('https://www.transparenttextures.com/patterns/dark-wood.png');
             background-color: #2D3748;
-        }
-        
-        #board-resize-handle {
-            position: absolute;
-            right: -5px;
-            bottom: -5px;
-            width: 20px;
-            height: 20px;
-            background: rgba(0,0,0,0.3);
-            border: 2px solid rgba(255,255,255,0.5);
-            border-radius: 50%;
-            cursor: nwse-resize;
-            z-index: 101; /* Above notes */
         }
 
         .note {
@@ -72,7 +47,7 @@
             cursor: grab;
             transition: box-shadow 0.1s ease-in-out, border-color 0.2s ease-in-out, background-color 0.3s ease-in-out;
             border: 2px solid transparent;
-            display: flex;
+            display: flex; /* Use flexbox for content layout */
         }
         
         .dark .note {
@@ -104,7 +79,7 @@
             border-radius: 50%;
             box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
             border: 2px solid #C53030;
-            cursor: crosshair;
+            cursor: crosshair; /* Indicates a special handle */
             z-index: 2;
         }
 
@@ -161,135 +136,78 @@
             pointer-events: none;
         }
 
-        #connections-svg.delete-connection-mode {
-            pointer-events: all;
-        }
-
-        #connections-svg.delete-connection-mode .connection-line {
-            stroke: #FBBF24;
-            cursor: crosshair;
-        }
-
-        #connections-svg.delete-connection-mode .connection-line:hover {
-            stroke-width: 8px;
-        }
-
         #controls {
             font-family: 'Permanent Marker', cursive;
-        }
-        
-        .modal {
-            background-color: rgba(0, 0, 0, 0.6);
         }
     </style>
 </head>
 <body class="w-screen h-screen m-0 p-0">
 
-    <div id="board-container">
-        <div id="board">
-            <svg id="connections-svg"></svg>
-            <div id="board-resize-handle"></div>
-        </div>
+    <!-- The main evidence board container -->
+    <div id="board">
+        <!-- SVG layer for drawing connection lines (the "yarn") -->
+        <svg id="connections-svg"></svg>
     </div>
 
-    <div id="controls" class="absolute top-4 left-4 z-20 bg-gray-800/80 backdrop-blur-sm text-white p-2 rounded-lg shadow-2xl border border-gray-600 flex flex-col space-y-2">
-        <h1 class="text-xl text-center text-yellow-300">Controls</h1>
-        <div id="userInfo" class="text-xs text-center bg-gray-700 p-1 rounded-md break-all">Connecting...</div>
-        
-        <!-- Board Management Section -->
-        <div class="border-t border-gray-600 pt-2">
-             <h2 class="text-lg text-center text-yellow-300 mb-1">Boards</h2>
-             <div class="flex items-center space-x-1">
-                <select id="board-switcher" class="w-full bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"></select>
-                <button id="addBoardBtn" class="p-1.5 bg-green-500 rounded-md hover:bg-green-600 text-sm">+</button>
-                <button id="deleteBoardBtn" class="p-1.5 bg-red-500 rounded-md hover:bg-red-600 text-sm">-</button>
-             </div>
-        </div>
-
-        <div class="border-t border-gray-600 pt-2">
-            <button id="addNoteBtn" class="w-full px-3 py-1 text-sm bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg cursor-grab">Add Notebox</button>
-            <button id="connectModeBtn" class="w-full mt-1.5 px-3 py-1 text-sm bg-red-500 text-white font-bold rounded-md hover:bg-red-600 transition-transform transform hover:scale-105 shadow-lg">Connect Notebox</button>
-            <button id="deleteModeBtn" class="w-full mt-1.5 px-3 py-1 text-sm bg-gray-600 text-white font-bold rounded-md hover:bg-gray-700 transition-transform transform hover:scale-105 shadow-lg">Delete Notebox</button>
-            <button id="deleteConnectionModeBtn" class="w-full mt-1.5 px-3 py-1 text-sm bg-purple-500 text-white font-bold rounded-md hover:bg-purple-600 transition-transform transform hover:scale-105 shadow-lg">Delete Connection</button>
-            <button id="toggleThemeBtn" class="w-full mt-1.5 px-3 py-1 text-sm bg-indigo-500 text-white font-bold rounded-md hover:bg-indigo-600 transition-transform transform hover:scale-105 shadow-lg">Toggle Theme</button>
-            <button id="clearBoardBtn" class="w-full mt-1.5 px-3 py-1 text-sm bg-blue-500 text-white font-bold rounded-md hover:bg-blue-600 transition-transform transform hover:scale-105 shadow-lg">Clear Board</button>
-        </div>
+    <!-- UI Controls -->
+    <div id="controls" class="absolute top-4 left-4 z-20 bg-gray-800/80 backdrop-blur-sm text-white p-4 rounded-lg shadow-2xl border border-gray-600 flex flex-col space-y-3">
+        <h1 class="text-3xl text-center text-yellow-300">Controls</h1>
+        <div id="userInfo" class="text-xs text-center bg-gray-700 p-2 rounded-md break-all">Connecting...</div>
+        <button id="addNoteBtn" class="px-4 py-2 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg cursor-grab">Add Notebox</button>
+        <button id="connectModeBtn" class="px-4 py-2 bg-red-500 text-white font-bold rounded-md hover:bg-red-600 transition-transform transform hover:scale-105 shadow-lg">Connect Notebox</button>
+        <button id="deleteModeBtn" class="px-4 py-2 bg-gray-600 text-white font-bold rounded-md hover:bg-gray-700 transition-transform transform hover:scale-105 shadow-lg">Delete Notebox</button>
+        <button id="toggleThemeBtn" class="px-4 py-2 bg-indigo-500 text-white font-bold rounded-md hover:bg-indigo-600 transition-transform transform hover:scale-105 shadow-lg">Toggle Theme</button>
+        <button id="clearBoardBtn" class="px-4 py-2 bg-blue-500 text-white font-bold rounded-md hover:bg-blue-600 transition-transform transform hover:scale-105 shadow-lg">Clear Board</button>
     </div>
     
+    <!-- Message display for connection mode -->
     <div id="message-box" class="hidden absolute bottom-10 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-lg shadow-xl z-30">
         <p>Click two noteboxes to connect them with yarn.</p>
     </div>
-    
-    <!-- Generic Modal -->
-    <div id="modal" class="hidden modal fixed inset-0 z-50 flex items-center justify-center">
-        <div class="bg-white dark:bg-gray-800 text-black dark:text-white p-6 rounded-lg shadow-2xl max-w-sm mx-auto">
-            <p id="modal-message" class="mb-4">Are you sure?</p>
-            <input id="modal-input" type="text" class="hidden w-full bg-gray-200 dark:bg-gray-700 p-2 rounded-md mb-4" placeholder="Enter board name...">
-            <div class="flex justify-end space-x-4">
-                <button id="modal-cancel" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500">Cancel</button>
-                <button id="modal-ok" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">OK</button>
-            </div>
-        </div>
-    </div>
 
 
+    <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, serverTimestamp, query, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
-        const boardContainer = document.getElementById('board-container');
         const board = document.getElementById('board');
-        const boardResizeHandle = document.getElementById('board-resize-handle');
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
         const deleteModeBtn = document.getElementById('deleteModeBtn');
-        const deleteConnectionModeBtn = document.getElementById('deleteConnectionModeBtn');
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
         const connectionsSvg = document.getElementById('connections-svg');
         const userInfoDiv = document.getElementById('userInfo');
         const messageBox = document.getElementById('message-box');
-        const boardSwitcher = document.getElementById('board-switcher');
-        const addBoardBtn = document.getElementById('addBoardBtn');
-        const deleteBoardBtn = document.getElementById('deleteBoardBtn');
-        
-        // Modal elements
-        const modal = document.getElementById('modal');
-        const modalMessage = document.getElementById('modal-message');
-        const modalInput = document.getElementById('modal-input');
-        const modalOkBtn = document.getElementById('modal-ok');
-        const modalCancelBtn = document.getElementById('modal-cancel');
 
         // --- FIREBASE STATE ---
         let db, auth;
-        let boardsCollection;
+        let notesCollection;
+        let connectionsCollection;
         let userId;
 
         // --- APP STATE ---
         let localNotes = new Map();
         let localConnections = [];
-        let localBoards = new Map();
-        let activeBoardId = null;
-        let isDragging = false, isRotating = false, isResizing = false, isBoardResizing = false;
+        let isDragging = false;
+        let isRotating = false;
+        let isResizing = false;
         let activeNote = null;
-        let isConnectMode = false, isDeleteMode = false, isDeleteConnectionMode = false;
+        let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
+        let isConnectMode = false;
+        let isDeleteMode = false;
         let firstConnectionPoint = null;
         let ghostNote = null;
-        const MIN_NOTE_WIDTH = 120, MIN_NOTE_HEIGHT = 100;
-        const MIN_BOARD_WIDTH = 800, MIN_BOARD_HEIGHT = 600;
-        
-        // Listener unsubscribers
-        let unsubscribeBoards = null, unsubscribeNotes = null, unsubscribeConnections = null;
-
-        // --- PAN & ZOOM STATE ---
-        let scale = 1.0, panX = 0, panY = 0;
-        let isPanning = false;
-        const MIN_SCALE = 0.1, MAX_SCALE = 3.0;
+        const DRAG_THRESHOLD = 5;
+        const MIN_NOTE_WIDTH = 120;
+        const MIN_NOTE_HEIGHT = 100;
 
         // --- INITIALIZATION ---
         async function initFirebase() {
+            // Your web app's Firebase configuration
             const firebaseConfig = {
               apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
               authDomain: "storyplanner-7ee69.firebaseapp.com",
@@ -303,12 +221,14 @@
             db = getFirestore(app);
             auth = getAuth(app);
 
+            notesCollection = collection(db, `points`);
+            connectionsCollection = collection(db, `snakes`);
+
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
                     userInfoDiv.innerHTML = `<strong>Detective ID:</strong> ${userId.substring(0, 8)}...`;
-                    boardsCollection = collection(db, `users/${userId}/boards`);
-                    loadBoards();
+                    setupRealtimeListeners();
                 } else {
                     userInfoDiv.textContent = 'Authenticating...';
                 }
@@ -321,97 +241,10 @@
                 userInfoDiv.textContent = 'Authentication Failed.';
             }
         }
-        
-        // --- MODAL & CONFIRM DIALOG ---
-        let modalCallback = null;
-        function showModal({message, showInput = false, okText = 'OK', okClass = 'bg-red-500'}, callback) {
-            modalMessage.textContent = message;
-            modalInput.classList.toggle('hidden', !showInput);
-            modalInput.value = '';
-            modalOkBtn.textContent = okText;
-            modalOkBtn.className = `px-4 py-2 text-white rounded-md ${okClass}`;
-            modal.classList.remove('hidden');
-            modalCallback = callback;
-        }
-        modalOkBtn.addEventListener('click', () => {
-            if (modalCallback) modalCallback(true, modalInput.value);
-            modal.classList.add('hidden');
-            modalCallback = null;
-        });
-        modalCancelBtn.addEventListener('click', () => {
-            if (modalCallback) modalCallback(false);
-            modal.classList.add('hidden');
-            modalCallback = null;
-        });
-        
-        // --- BOARD MANAGEMENT ---
-        function loadBoards() {
-            if (unsubscribeBoards) unsubscribeBoards();
-            
-            const q = query(collection(db, `users/${userId}/boards`));
-            unsubscribeBoards = onSnapshot(q, (snapshot) => {
-                const newBoards = [];
-                snapshot.forEach(doc => {
-                    newBoards.push({ id: doc.id, ...doc.data() });
-                });
-                
-                localBoards.clear();
-                newBoards.forEach(b => localBoards.set(b.id, b));
 
-                updateBoardSwitcher();
-
-                if (!activeBoardId || !localBoards.has(activeBoardId)) {
-                    if (newBoards.length > 0) {
-                        switchBoard(newBoards[0].id);
-                    } else {
-                        // No boards exist, create a default one
-                        createNewBoard("My First Case");
-                    }
-                }
-            });
-        }
-        
-        function updateBoardSwitcher() {
-            const selectedId = boardSwitcher.value;
-            boardSwitcher.innerHTML = '';
-            localBoards.forEach(b => {
-                const option = document.createElement('option');
-                option.value = b.id;
-                option.textContent = b.name;
-                boardSwitcher.appendChild(option);
-            });
-            boardSwitcher.value = localBoards.has(selectedId) ? selectedId : activeBoardId;
-        }
-
-        async function switchBoard(boardId) {
-            if (!boardId || activeBoardId === boardId) return;
-
-            // Detach old listeners
-            if (unsubscribeNotes) unsubscribeNotes();
-            if (unsubscribeConnections) unsubscribeConnections();
-
-            activeBoardId = boardId;
-            boardSwitcher.value = boardId;
-            
-            // Clear current board state
-            board.innerHTML = '<svg id="connections-svg"></svg><div id="board-resize-handle"></div>';
-            localNotes.clear();
-            localConnections = [];
-
-            const boardData = localBoards.get(boardId);
-            if (!boardData) return;
-
-            // Apply board properties
-            scale = boardData.scale || 1.0;
-            panX = boardData.panX || 0;
-            panY = boardData.panY || 0;
-            board.style.width = `${boardData.width || MIN_BOARD_WIDTH}px`;
-            board.style.height = `${boardData.height || MIN_BOARD_HEIGHT}px`;
-            updateBoardTransform();
-            
-            // Attach new listeners
-            const notesPath = `users/${userId}/boards/${activeBoardId}/notes`;
-            unsubscribeNotes = onSnapshot(collection(db, notesPath), (snapshot) => {
+        // --- REAL-TIME LISTENERS ---
+        function setupRealtimeListeners() {
+            onSnapshot(notesCollection, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     const noteData = { id: change.doc.id, ...change.doc.data() };
                     if (change.type === "added" || change.type === "modified") {
@@ -427,60 +260,11 @@
                 renderConnections();
             });
 
-            const connectionsPath = `users/${userId}/boards/${activeBoardId}/connections`;
-            unsubscribeConnections = onSnapshot(collection(db, connectionsPath), (snapshot) => {
+            onSnapshot(connectionsCollection, (snapshot) => {
                 localConnections = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderConnections();
             });
         }
-        
-        async function createNewBoard(name) {
-             const newBoardRef = await addDoc(collection(db, `users/${userId}/boards`), {
-                name: name || "Untitled Board",
-                width: 4000,
-                height: 3000,
-                scale: 0.5,
-                panX: 0,
-                panY: 0,
-                createdAt: serverTimestamp()
-            });
-            switchBoard(newBoardRef.id);
-        }
-
-        async function deleteCurrentBoard() {
-            if (!activeBoardId) return;
-            const boardName = localBoards.get(activeBoardId).name;
-            showModal({message: `Delete "${boardName}" and all its contents? This cannot be undone.`}, async (confirmed) => {
-                if (confirmed) {
-                    const boardRef = doc(db, `users/${userId}/boards`, activeBoardId);
-                    // This is a simplified delete. For production, a cloud function is needed to recursively delete subcollections.
-                    // For this app, we'll just delete the board doc. The notes/connections will be orphaned.
-                    await deleteDoc(boardRef);
-                    activeBoardId = null; // Force re-selection of a board
-                    loadBoards(); // Refresh the list
-                }
-            });
-        }
-        
-        // --- DEBOUNCE for saving pan/zoom ---
-        function debounce(func, delay) {
-            let timeout;
-            return function(...args) {
-                const context = this;
-                clearTimeout(timeout);
-                timeout = setTimeout(() => func.apply(context, args), delay);
-            };
-        }
-        const saveBoardState = debounce(() => {
-            if (!activeBoardId) return;
-            const boardRef = doc(db, `users/${userId}/boards`, activeBoardId);
-            updateDoc(boardRef, {
-                panX: panX,
-                panY: panY,
-                scale: scale
-            });
-        }, 1000);
-
 
         // --- DOM MANIPULATION & RENDERING ---
         function createOrUpdateNoteElement(noteData) {
@@ -490,8 +274,13 @@
                 noteEl.id = noteData.id;
                 noteEl.className = 'note';
                 noteEl.innerHTML = `<div class="note-pin"></div><div class="note-content"></div><div class="resize-handle"></div>`;
-                board.insertBefore(noteEl, board.firstChild); // Add notes inside board
+                board.appendChild(noteEl);
                 
+                if (!noteData.rotation) {
+                    const rotation = Math.random() * 10 - 5;
+                    updateDoc(doc(notesCollection, noteData.id), { rotation });
+                    noteData.rotation = rotation;
+                }
                 noteEl.addEventListener('mousedown', handleNoteMouseDown);
                 noteEl.addEventListener('click', handleNoteClick);
             }
@@ -505,103 +294,128 @@
             const contentDiv = noteEl.querySelector('.note-content');
             contentDiv.textContent = noteData.text || 'Click to edit...';
 
-            noteEl.classList.toggle('is-deletable', isDeleteMode);
+            if (isDeleteMode) {
+                noteEl.classList.add('is-deletable');
+            } else {
+                noteEl.classList.remove('is-deletable');
+            }
         }
 
         function renderConnections() {
-            const svgEl = board.querySelector('#connections-svg');
-            if (!svgEl) return;
-            svgEl.innerHTML = '';
+            connectionsSvg.innerHTML = '';
             localConnections.forEach(conn => {
                 if (conn.path && conn.path.length >= 2) {
-                    const noteAData = localNotes.get(conn.path[0]);
-                    const noteBData = localNotes.get(conn.path[1]);
+                    for (let i = 0; i < conn.path.length - 1; i++) {
+                        const noteAData = localNotes.get(conn.path[i]);
+                        const noteBData = localNotes.get(conn.path[i+1]);
 
-                    if (noteAData && noteBData) {
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.setAttribute('class', 'connection-line');
-                        line.setAttribute('data-id', conn.id);
-                        line.setAttribute('x1', noteAData.x + (noteAData.width || 200) / 2);
-                        line.setAttribute('y1', noteAData.y + (noteAData.height || 150) / 2);
-                        line.setAttribute('x2', noteBData.x + (noteBData.width || 200) / 2);
-                        line.setAttribute('y2', noteBData.y + (noteBData.height || 150) / 2);
-                        line.setAttribute('stroke', '#D53F8C');
-                        line.setAttribute('stroke-width', '4');
-                        line.setAttribute('stroke-dasharray', '10, 5');
-                        svgEl.appendChild(line);
+                        if (noteAData && noteBData) {
+                            const noteAWidth = noteAData.width || 200;
+                            const noteAHeight = noteAData.height || 150;
+                            const noteBWidth = noteBData.width || 200;
+                            const noteBHeight = noteBData.height || 150;
+
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', noteAData.x + noteAWidth / 2);
+                            line.setAttribute('y1', noteAData.y + noteAHeight / 2);
+                            line.setAttribute('x2', noteBData.x + noteBWidth / 2);
+                            line.setAttribute('y2', noteBData.y + noteBHeight / 2);
+                            line.setAttribute('stroke', '#D53F8C');
+                            line.setAttribute('stroke-width', '4');
+                            line.setAttribute('stroke-dasharray', '10, 5');
+                            
+                            const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                            anim.setAttribute('attributeName', 'stroke-dashoffset');
+                            anim.setAttribute('from', '0');
+                            anim.setAttribute('to', '15');
+                            anim.setAttribute('dur', '0.5s');
+                            anim.setAttribute('repeatCount', 'indefinite');
+                            line.appendChild(anim);
+
+                            connectionsSvg.appendChild(line);
+                        }
                     }
                 }
             });
-            svgEl.classList.toggle('delete-connection-mode', isDeleteConnectionMode);
-        }
-        
-        function updateBoardTransform() {
-            board.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
         }
 
         // --- EVENT HANDLERS ---
-        boardSwitcher.addEventListener('change', (e) => switchBoard(e.target.value));
-        addBoardBtn.addEventListener('click', () => {
-            showModal({message: 'Create a new board', showInput: true, okText: 'Create', okClass: 'bg-green-500'}, (confirmed, value) => {
-                if (confirmed && value.trim()) {
-                    createNewBoard(value.trim());
-                }
-            });
-        });
-        deleteBoardBtn.addEventListener('click', deleteCurrentBoard);
-        
         addNoteBtn.addEventListener('mousedown', startAddNoteDrag);
         
-        clearBoardBtn.addEventListener('click', () => {
-             showModal({message: 'Are you sure you want to clear this entire board? This cannot be undone.'}, async (confirmed) => {
-                if (confirmed && activeBoardId) {
-                    const batch = writeBatch(db);
-                    const notesPath = `users/${userId}/boards/${activeBoardId}/notes`;
-                    const connsPath = `users/${userId}/boards/${activeBoardId}/connections`;
-                    const notesSnapshot = await getDocs(collection(db, notesPath));
-                    notesSnapshot.forEach(doc => batch.delete(doc.ref));
-                    const connectionsSnapshot = await getDocs(collection(db, connsPath));
-                    connectionsSnapshot.forEach(doc => batch.delete(doc.ref));
-                    await batch.commit();
-                }
-            });
+        clearBoardBtn.addEventListener('click', async () => {
+            if(confirm('Are you sure you want to clear the entire board? This cannot be undone.')) {
+                const batch = writeBatch(db);
+                const notesSnapshot = await getDocs(notesCollection);
+                notesSnapshot.forEach(doc => batch.delete(doc.ref));
+                const connectionsSnapshot = await getDocs(connectionsCollection);
+                connectionsSnapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
         });
-        
-        // ... (other button handlers like connect, delete note, etc. are largely the same)
+
         connectModeBtn.addEventListener('click', () => {
             isConnectMode = !isConnectMode;
-            connectModeBtn.textContent = isConnectMode ? 'Cancel Connect' : 'Connect Notebox';
-            // ... rest of the logic
+            if (isConnectMode) {
+                if (isDeleteMode) deleteModeBtn.click();
+                connectModeBtn.textContent = 'Cancel Connect';
+                connectModeBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                connectModeBtn.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                messageBox.classList.remove('hidden');
+            } else {
+                connectModeBtn.textContent = 'Connect Notebox';
+                connectModeBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                connectModeBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+                if(firstConnectionPoint) document.getElementById(firstConnectionPoint).style.outline = 'none';
+                firstConnectionPoint = null;
+                messageBox.classList.add('hidden');
+            }
         });
-        
+
         deleteModeBtn.addEventListener('click', () => {
             isDeleteMode = !isDeleteMode;
-            document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable', isDeleteMode));
-            // ... rest of the logic
-        });
-        
-        deleteConnectionModeBtn.addEventListener('click', () => {
-            isDeleteConnectionMode = !isDeleteConnectionMode;
-            renderConnections(); // Re-render to apply class
-            // ... rest of the logic
+            document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable'));
+            if (isDeleteMode) {
+                if (isConnectMode) connectModeBtn.click();
+                deleteModeBtn.textContent = 'Cancel Delete';
+                deleteModeBtn.classList.remove('bg-gray-600', 'hover:bg-gray-700');
+                deleteModeBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+            } else {
+                deleteModeBtn.textContent = 'Delete Notebox';
+                deleteModeBtn.classList.add('bg-gray-600', 'hover:bg-gray-700');
+                deleteModeBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+            }
         });
 
+        toggleThemeBtn.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+        });
 
         function handleNoteClick(e) {
-            if (e.detail === 3) { startEditing(e); return; }
+            if (e.detail === 3) {
+                startEditing(e);
+                return;
+            }
+
             const noteEl = e.currentTarget;
-            if (isDeleteMode) { deleteNoteById(noteEl.id); return; }
+
+            if (isDeleteMode) {
+                deleteNoteById(noteEl.id);
+                return;
+            }
+
             if (isConnectMode) {
                 if (!firstConnectionPoint) {
                     firstConnectionPoint = noteEl.id;
                     noteEl.style.outline = '4px solid #FBBF24';
+                    messageBox.querySelector('p').textContent = "Selected first notebox. Click another to connect.";
                 } else {
                     if (firstConnectionPoint === noteEl.id) return;
-                    const connsPath = `users/${userId}/boards/${activeBoardId}/connections`;
-                    addDoc(collection(db, connsPath), { path: [firstConnectionPoint, noteEl.id] });
-                    const firstEl = document.getElementById(firstConnectionPoint);
-                    if(firstEl) firstEl.style.outline = 'none';
+                    addDoc(connectionsCollection, { path: [firstConnectionPoint, noteEl.id] });
+                    document.getElementById(firstConnectionPoint).style.outline = 'none';
+                    isConnectMode = false;
                     connectModeBtn.click();
+                    messageBox.querySelector('p').textContent = "Click two noteboxes to connect them with yarn.";
+                    firstConnectionPoint = null;
                 }
             }
         }
@@ -611,164 +425,234 @@
             const noteEl = e.currentTarget;
             const contentDiv = noteEl.querySelector('.note-content');
             const currentText = localNotes.get(noteEl.id).text;
+
             const textarea = document.createElement('textarea');
             textarea.className = 'note-textarea';
             textarea.value = currentText === 'New Notebox...' ? '' : currentText;
+
             contentDiv.replaceWith(textarea);
             textarea.focus();
+            textarea.select();
+
             const finishEditing = () => {
                 const newText = textarea.value.trim();
                 textarea.replaceWith(contentDiv);
-                const notesPath = `users/${userId}/boards/${activeBoardId}/notes`;
-                if (newText !== currentText) {
-                    updateDoc(doc(db, notesPath, noteEl.id), { text: newText || 'New Notebox...' });
+                if (newText !== currentText && newText !== '') {
+                    updateDoc(doc(notesCollection, noteEl.id), { text: newText });
+                } else if (newText === '') {
+                    updateDoc(doc(notesCollection, noteEl.id), { text: 'New Notebox...' });
                 }
             };
+            
             textarea.addEventListener('blur', finishEditing);
-            textarea.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') finishEditing() });
+            textarea.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') {
+                    textarea.value = currentText;
+                    finishEditing();
+                }
+            });
         }
 
         async function deleteNoteById(noteId) {
-            if (!noteId || !activeBoardId) return;
-            showModal({message: 'Delete this notebox and its connections?'}, async (confirmed) => {
-                if (confirmed) {
-                    const batch = writeBatch(db);
-                    const notesPath = `users/${userId}/boards/${activeBoardId}/notes`;
-                    const connsPath = `users/${userId}/boards/${activeBoardId}/connections`;
-                    localConnections.filter(c => c.path.includes(noteId)).forEach(c => {
-                        batch.delete(doc(db, connsPath, c.id));
-                    });
-                    batch.delete(doc(db, notesPath, noteId));
-                    await batch.commit();
+            if (!noteId) return;
+            if (confirm('Are you sure you want to delete this notebox and all its connections?')) {
+                const batch = writeBatch(db);
+                const connectionsToDelete = localConnections.filter(conn => conn.path.includes(noteId));
+                connectionsToDelete.forEach(conn => {
+                    batch.delete(doc(connectionsCollection, conn.id));
+                });
+                batch.delete(doc(notesCollection, noteId));
+                await batch.commit();
+
+                if (isDeleteMode) {
+                    deleteModeBtn.click();
                 }
-            });
+            }
         }
 
-        // --- INTERACTION LOGIC ---
+        // --- INTERACTION LOGIC (DRAG, ROTATE, RESIZE) ---
         function handleNoteMouseDown(e) {
             if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode) return;
-            e.stopPropagation();
+            
             activeNote = e.currentTarget;
             e.preventDefault();
-            if (e.target.classList.contains('resize-handle')) isResizing = true;
-            else if (e.target.classList.contains('note-pin')) isRotating = true;
-            else isDragging = true;
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
-        }
-        
-        boardResizeHandle.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-            isBoardResizing = true;
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
-        });
 
-        function onMouseMove(e) {
-            if (isDragging) onDrag(e);
-            if (isResizing) onResize(e);
-            if (isRotating) onRotate(e);
-            if (isBoardResizing) onBoardResize(e);
-            if (isPanning) onPan(e);
-        }
-        
-        function onMouseUp(e) {
-            if (isDragging || isResizing || isRotating) endNoteInteraction();
-            if (isBoardResizing) endBoardResizeInteraction();
-            if (isPanning) endPanInteraction();
-            window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
-        }
-        
-        function onDrag(e) { /* ... same as before but using scale ... */ }
-        function onResize(e) { /* ... same as before but using scale ... */ }
-        function onRotate(e) { /* ... same as before ... */ }
-        
-        function onBoardResize(e) {
-            const boardData = localBoards.get(activeBoardId);
-            if (!boardData) return;
-            let newWidth = boardData.width + e.movementX / scale;
-            let newHeight = boardData.height + e.movementY / scale;
-            boardData.width = Math.max(MIN_BOARD_WIDTH, newWidth);
-            boardData.height = Math.max(MIN_BOARD_HEIGHT, newHeight);
-            board.style.width = `${boardData.width}px`;
-            board.style.height = `${boardData.height}px`;
-        }
-        
-        function endNoteInteraction() {
-            const noteData = activeNote ? localNotes.get(activeNote.id) : null;
-            if (noteData) {
-                const notesPath = `users/${userId}/boards/${activeBoardId}/notes`;
-                const noteRef = doc(db, notesPath, activeNote.id);
-                if (isDragging) updateDoc(noteRef, { x: noteData.x, y: noteData.y });
-                if (isResizing) updateDoc(noteRef, { width: noteData.width, height: noteData.height });
-                if (isRotating) updateDoc(noteRef, { rotation: noteData.rotation });
+            if (e.target.classList.contains('resize-handle')) {
+                isResizing = true;
+                activeNote.classList.add('is-resizing');
+                window.addEventListener('mousemove', onResize);
+            } else if (e.target.classList.contains('note-pin')) {
+                isRotating = true;
+                activeNote.classList.add('is-rotating');
+                window.addEventListener('mousemove', onRotate);
+            } else {
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                const rect = activeNote.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+                window.addEventListener('mousemove', onDrag);
             }
-            isDragging = isResizing = isRotating = false;
+            window.addEventListener('mouseup', endInteraction);
+        }
+
+        function onDrag(e) {
+            if (!activeNote || isRotating || isResizing) return;
+            
+            if (!isDragging) {
+                const dx = e.clientX - dragStartX;
+                const dy = e.clientY - dragStartY;
+                if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+                    isDragging = true;
+                    activeNote.classList.add('is-dragging');
+                    board.appendChild(activeNote);
+                }
+            }
+
+            if (isDragging) {
+                const newX = e.clientX - board.getBoundingClientRect().left - dragOffsetX;
+                const newY = e.clientY - board.getBoundingClientRect().top - dragOffsetY;
+
+                activeNote.style.left = `${newX}px`;
+                activeNote.style.top = `${newY}px`;
+                
+                const noteData = localNotes.get(activeNote.id);
+                if (noteData) {
+                    noteData.x = newX;
+                    noteData.y = newY;
+                    renderConnections();
+                }
+            }
+        }
+        
+        function onResize(e) {
+            if (!isResizing || !activeNote) return;
+
+            const noteRect = activeNote.getBoundingClientRect();
+            let newWidth = e.clientX - noteRect.left;
+            let newHeight = e.clientY - noteRect.top;
+
+            newWidth = Math.max(MIN_NOTE_WIDTH, newWidth);
+            newHeight = Math.max(MIN_NOTE_HEIGHT, newHeight);
+
+            activeNote.style.width = `${newWidth}px`;
+            activeNote.style.height = `${newHeight}px`;
+
+            const noteData = localNotes.get(activeNote.id);
+            if (noteData) {
+                noteData.width = newWidth;
+                noteData.height = newHeight;
+                renderConnections();
+            }
+        }
+
+        function onRotate(e) {
+            if (!isRotating || !activeNote) return;
+
+            const noteRect = activeNote.getBoundingClientRect();
+            const noteCenterX = noteRect.left + noteRect.width / 2;
+            const noteCenterY = noteRect.top + noteRect.height / 2;
+
+            const angleRad = Math.atan2(e.clientY - noteCenterY, e.clientX - noteCenterX);
+            const angleDeg = angleRad * (180 / Math.PI) + 90;
+
+            activeNote.style.transform = `rotate(${angleDeg}deg)`;
+            
+            const noteData = localNotes.get(activeNote.id);
+            if (noteData) {
+                noteData.rotation = angleDeg;
+            }
+        }
+        
+        function endInteraction(e) {
+            if (isDragging) {
+                const newX = parseFloat(activeNote.style.left);
+                const newY = parseFloat(activeNote.style.top);
+                updateDoc(doc(notesCollection, activeNote.id), { x: newX, y: newY });
+            }
+            if (isResizing) {
+                const newWidth = parseFloat(activeNote.style.width);
+                const newHeight = parseFloat(activeNote.style.height);
+                updateDoc(doc(notesCollection, activeNote.id), { width: newWidth, height: newHeight });
+            }
+            if (isRotating) {
+                const noteData = localNotes.get(activeNote.id);
+                if (noteData) {
+                    updateDoc(doc(notesCollection, activeNote.id), { rotation: noteData.rotation });
+                }
+            }
+            
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mousemove', onRotate);
+            window.removeEventListener('mousemove', onResize);
+            window.removeEventListener('mouseup', endInteraction);
+
+            if(activeNote) {
+                activeNote.classList.remove('is-dragging', 'is-rotating', 'is-resizing');
+            }
+
+            isDragging = isRotating = isResizing = false;
             activeNote = null;
         }
-        
-        function endBoardResizeInteraction() {
-            isBoardResizing = false;
-            const boardData = localBoards.get(activeBoardId);
-            if (boardData) {
-                const boardRef = doc(db, `users/${userId}/boards`, activeBoardId);
-                updateDoc(boardRef, { width: boardData.width, height: boardData.height });
-            }
-        }
 
-        // --- PAN AND ZOOM LOGIC ---
-        boardContainer.addEventListener('mousedown', (e) => {
-            if (e.target === boardContainer || e.target === board) {
-                isPanning = true;
-                boardContainer.classList.add('is-panning');
-                window.addEventListener('mousemove', onMouseMove);
-                window.addEventListener('mouseup', onMouseUp);
-            }
-        });
-        
-        function onPan(e) {
-            panX += e.movementX;
-            panY += e.movementY;
-            updateBoardTransform();
-        }
-
-        function endPanInteraction() {
-            isPanning = false;
-            boardContainer.classList.remove('is-panning');
-            saveBoardState();
-        }
-
-        boardContainer.addEventListener('wheel', (e) => {
+        // --- DRAG AND DROP LOGIC (FOR ADDING NEW NOTES) ---
+        function startAddNoteDrag(e) {
             e.preventDefault();
-            const rect = boardContainer.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            const boardX = (mouseX - panX) / scale;
-            const boardY = (mouseY - panY) / scale;
-            scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale - e.deltaY * 0.005));
-            panX = mouseX - boardX * scale;
-            panY = mouseY - boardY * scale;
-            updateBoardTransform();
-            saveBoardState();
-        });
+            
+            ghostNote = document.createElement('div');
+            ghostNote.className = 'note';
+            ghostNote.style.position = 'absolute';
+            ghostNote.style.zIndex = '1000';
+            ghostNote.style.pointerEvents = 'none';
+            ghostNote.style.opacity = '0.7';
+            ghostNote.innerHTML = `<div class="note-pin"></div><div class="note-content">New Notebox...</div>`;
+            document.body.appendChild(ghostNote);
 
-        // --- DRAG AND DROP FOR NEW NOTES ---
-        function startAddNoteDrag(e) { /* ... same as before ... */ }
+            moveGhostNote(e);
+
+            window.addEventListener('mousemove', onAddNoteDrag);
+            window.addEventListener('mouseup', endAddNoteDrag);
+        }
+
+        function onAddNoteDrag(e) {
+            moveGhostNote(e);
+        }
+
+        function moveGhostNote(e) {
+            if (!ghostNote) return;
+            ghostNote.style.left = `${e.clientX - 100}px`;
+            ghostNote.style.top = `${e.clientY - 75}px`;
+        }
+
         function endAddNoteDrag(e) {
-            // ...
-            const dropX = (e.clientX - boardContainer.offsetLeft - panX) / scale - 100;
-            const dropY = (e.clientY - boardContainer.offsetTop - panY) / scale - 75;
-            const notesPath = `users/${userId}/boards/${activeBoardId}/notes`;
-            addDoc(collection(db, notesPath), {
-                text: 'New Notebox...', x: dropX, y: dropY,
-                rotation: Math.random() * 10 - 5, width: 200, height: 150
-            });
-            // ...
+            window.removeEventListener('mousemove', onAddNoteDrag);
+            window.removeEventListener('mouseup', endAddNoteDrag);
+
+            if (ghostNote) {
+                ghostNote.remove();
+                ghostNote = null;
+            }
+
+            const boardRect = board.getBoundingClientRect();
+            if (e.clientX >= boardRect.left && e.clientX <= boardRect.right &&
+                e.clientY >= boardRect.top && e.clientY <= boardRect.bottom) {
+                
+                const dropX = e.clientX - boardRect.left - 100;
+                const dropY = e.clientY - boardRect.top - 75;
+
+                addDoc(notesCollection, {
+                    text: 'New Notebox...',
+                    x: dropX,
+                    y: dropY,
+                    rotation: Math.random() * 10 - 5,
+                    width: 200,
+                    height: 150
+                });
+            }
         }
 
         // --- STARTUP ---
-        window.onload = initFirebase;
+        initFirebase();
     </script>
 </body>
 </html>
