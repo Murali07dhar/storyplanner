@@ -211,7 +211,7 @@
     <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, serverTimestamp, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
@@ -252,12 +252,22 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'detective-board-default';
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { /* Add fallback config if needed */ };
+            // IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE
+            // To get this, go to your Firebase project, click the gear icon -> Project settings,
+            // scroll down to "Your apps", and select the web app you created.
+            const firebaseConfig = {
+                apiKey: "YOUR_API_KEY",
+                authDomain: "YOUR_AUTH_DOMAIN",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_STORAGE_BUCKET",
+                messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+                appId: "YOUR_APP_ID"
+            };
             
-            if (!firebaseConfig.apiKey) {
-                console.error("Firebase config is missing!");
-                userInfoDiv.textContent = "Configuration Error.";
+            if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.error("Firebase config is missing or is a placeholder! Please add your Firebase project configuration.");
+                userInfoDiv.textContent = "Firebase Configuration Error.";
+                boardSelector.innerHTML = `<div class="text-center text-red-400 p-8"><h1>Configuration Error</h1><p>Please add your Firebase project configuration to the script.</p></div>`;
                 return;
             }
 
@@ -268,7 +278,7 @@
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
-                    userInfoDiv.innerHTML = `<strong>Detective ID:</strong> ${userId.substring(0,8)}...`;
+                    userInfoDiv.innerHTML = `<strong>Detective ID:</strong> ${userId}`;
                     await loadBoardsList();
                 } else {
                     userInfoDiv.textContent = 'Authenticating...';
@@ -276,11 +286,7 @@
             });
 
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
@@ -298,9 +304,10 @@
             controls.classList.add('hidden');
             boardSelector.classList.remove('hidden');
             boardList.innerHTML = '<li>Loading boards...</li>';
-
-            const boardsListCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boardsList');
-            const q = query(boardsListCollection); // Could add orderBy('createdAt') later
+            
+            // The Firestore path is now simpler for a standalone app
+            const boardsListCollection = collection(db, 'users', userId, 'boardsList');
+            const q = query(boardsListCollection); 
             
             onSnapshot(q, (snapshot) => {
                 boardList.innerHTML = '';
@@ -323,10 +330,11 @@
         async function createNewBoard() {
             const boardName = newBoardNameInput.value.trim();
             if (!boardName) {
-                alert("Please enter a name for the new board.");
+                // Using the custom modal for alerts now
+                await showConfirmation("Please enter a name for the new board.");
                 return;
             }
-            const boardsListCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boardsList');
+            const boardsListCollection = collection(db, 'users', userId, 'boardsList');
             try {
                 const newBoardDoc = await addDoc(boardsListCollection, {
                     name: boardName,
@@ -342,9 +350,9 @@
         function loadBoard(boardId) {
             currentBoardId = boardId;
 
-            // Update collection references
-            notesCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boards', currentBoardId, 'notes');
-            connectionsCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boards', currentBoardId, 'connections');
+            // Update collection references for the selected board
+            notesCollection = collection(db, 'users', userId, 'boards', currentBoardId, 'notes');
+            connectionsCollection = collection(db, 'users', userId, 'boards', currentBoardId, 'connections');
 
             // Clear old data and UI
             board.innerHTML = '<svg id="connections-svg"></svg>'; // Keep the SVG element
@@ -454,7 +462,7 @@
         }
 
         // --- CUSTOM CONFIRMATION MODAL ---
-        function showConfirmation(message) {
+        function showConfirmation(message, isAlert = false) {
             return new Promise((resolve) => {
                 const modal = document.getElementById('confirmation-modal');
                 const messageEl = document.getElementById('confirmation-message');
@@ -462,17 +470,25 @@
                 const cancelBtn = document.getElementById('confirm-cancel-btn');
 
                 messageEl.textContent = message;
+                
+                // If it's just an alert, hide the cancel button
+                if (isAlert) {
+                    cancelBtn.classList.add('hidden');
+                    okBtn.textContent = 'OK';
+                } else {
+                    cancelBtn.classList.remove('hidden');
+                    okBtn.textContent = 'Confirm';
+                }
+
                 modal.classList.remove('hidden');
 
                 const close = (result) => {
                     modal.classList.add('hidden');
-                    // Clone and replace buttons to remove old listeners
                     okBtn.replaceWith(okBtn.cloneNode(true));
                     cancelBtn.replaceWith(cancelBtn.cloneNode(true));
                     resolve(result);
                 };
 
-                // Add new listeners
                 document.getElementById('confirm-ok-btn').onclick = () => close(true);
                 document.getElementById('confirm-cancel-btn').onclick = () => close(false);
             });
