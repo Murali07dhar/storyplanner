@@ -22,7 +22,7 @@
             background-color: #1a202c;
         }
 
-        /* The main corkboard area */
+        /* The main corkboard area - acts as a viewport */
         #board {
             background-image: url('https://www.transparenttextures.com/patterns/cork-wallet.png');
             background-color: #C19A6B; /* Cork color */
@@ -32,11 +32,26 @@
             overflow: hidden;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
             transition: background-color 0.3s ease-in-out;
+            cursor: grab;
+        }
+        
+        #board.is-panning {
+            cursor: grabbing;
         }
 
         .dark #board {
             background-image: url('https://www.transparenttextures.com/patterns/dark-wood.png');
             background-color: #2D3748;
+        }
+
+        /* This container will hold all notes and connections and will be panned */
+        #pan-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: 0 0;
         }
 
         /* Individual note styling */
@@ -177,8 +192,11 @@
 
     <!-- The main evidence board container -->
     <div id="board" class="w-full h-full">
-        <!-- SVG layer for drawing connection lines (the "yarn") -->
-        <svg id="connections-svg"></svg>
+        <!-- This container holds all pannable content -->
+        <div id="pan-container">
+             <!-- SVG layer for drawing connection lines (the "yarn") -->
+            <svg id="connections-svg"></svg>
+        </div>
     </div>
 
     <!-- UI Controls -->
@@ -218,13 +236,16 @@
 
         // --- DOM ELEMENTS ---
         const board = document.getElementById('board');
+        const panContainer = document.getElementById('pan-container');
+        const connectionsSvg = document.getElementById('connections-svg');
+        panContainer.appendChild(connectionsSvg); // Move SVG into the pan container
+
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
         const deleteConnectionBtn = document.getElementById('deleteConnectionBtn');
         const deleteModeBtn = document.getElementById('deleteModeBtn');
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
-        const connectionsSvg = document.getElementById('connections-svg');
         const userInfoDiv = document.getElementById('userInfo');
         const messageBox = document.getElementById('message-box');
         const confirmationModal = document.getElementById('confirmation-modal');
@@ -241,15 +262,21 @@
         // --- APP STATE ---
         let localNotes = new Map();
         let localConnections = new Map();
-        let isDragging = false, isRotating = false, isResizing = false;
         let activeNote = null;
-        let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
+        let ghostNote = null;
+        let confirmAction = null;
+        
+        // Interaction states
+        let isDragging = false, isRotating = false, isResizing = false, isPanning = false;
+        let dragStartX, dragStartY;
+        let panX = 0, panY = 0, panStartX, panStartY;
+
+        // Mode states
         let isConnectMode = false;
         let isDeleteMode = false;
         let isDeleteConnectionMode = false;
         let firstConnectionPoint = null;
-        let ghostNote = null;
-        let confirmAction = null;
+
         const DRAG_THRESHOLD = 5;
         const MIN_NOTE_WIDTH = 120;
         const MIN_NOTE_HEIGHT = 100;
@@ -297,7 +324,6 @@
 
         // --- REAL-TIME LISTENERS ---
         function setupRealtimeListeners() {
-            // Listen for changes in the notes collection.
             onSnapshot(notesCollection, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     const noteData = { id: change.doc.id, ...change.doc.data() };
@@ -311,10 +337,9 @@
                         localNotes.delete(noteData.id);
                     }
                 });
-                renderConnections(); // Re-render connections when notes change.
+                renderConnections();
             });
 
-            // Listen for changes in the connections collection.
             onSnapshot(connectionsCollection, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                      const connData = { id: change.doc.id, ...change.doc.data() };
@@ -333,25 +358,22 @@
         function createOrUpdateNoteElement(noteData) {
             let noteEl = document.getElementById(noteData.id);
             if (!noteEl) {
-                // Create the note element if it doesn't exist.
                 noteEl = document.createElement('div');
                 noteEl.id = noteData.id;
                 noteEl.className = 'note';
                 noteEl.innerHTML = `<div class="note-pin"></div><div class="note-content"></div><div class="resize-handle"></div>`;
-                board.appendChild(noteEl);
+                panContainer.appendChild(noteEl); // Append to pan container
                 
-                // Assign a slight random rotation on creation for a more natural look.
                 if (noteData.rotation === undefined) {
-                    const rotation = Math.random() * 8 - 4; // -4 to +4 degrees
+                    const rotation = Math.random() * 8 - 4;
                     updateDoc(doc(notesCollection, noteData.id), { rotation });
                     noteData.rotation = rotation;
                 }
                 noteEl.addEventListener('mousedown', handleNoteMouseDown);
-                noteEl.addEventListener('dblclick', startEditing); // Use double-click for editing
-                noteEl.addEventListener('click', handleNoteSingleClick); // Use single-click for modes
+                noteEl.addEventListener('dblclick', startEditing);
+                noteEl.addEventListener('click', handleNoteSingleClick);
             }
             
-            // Apply data from Firestore to the element.
             noteEl.style.left = `${noteData.x || 50}px`;
             noteEl.style.top = `${noteData.y || 50}px`;
             noteEl.style.width = `${noteData.width || 200}px`;
@@ -360,13 +382,11 @@
             
             const contentDiv = noteEl.querySelector('.note-content');
             contentDiv.textContent = noteData.text || 'Double-click to edit...';
-
-            // Toggle delete-mode styling.
             noteEl.classList.toggle('is-deletable', isDeleteMode);
         }
 
         function renderConnections() {
-            connectionsSvg.innerHTML = ''; // Clear existing lines.
+            connectionsSvg.innerHTML = '';
             localConnections.forEach(conn => {
                 if (conn.path && conn.path.length >= 2) {
                     const noteAData = localNotes.get(conn.path[0]);
@@ -379,7 +399,7 @@
                         const noteBHeight = noteBData.height || 150;
 
                         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.dataset.id = conn.id; // Store Firestore ID for deletion
+                        line.dataset.id = conn.id;
                         line.classList.add('connection-line');
                         line.classList.toggle('is-deletable', isDeleteConnectionMode);
 
@@ -387,7 +407,7 @@
                         line.setAttribute('y1', noteAData.y + noteAHeight / 2);
                         line.setAttribute('x2', noteBData.x + noteBWidth / 2);
                         line.setAttribute('y2', noteBData.y + noteBHeight / 2);
-                        line.setAttribute('stroke', '#D53F8C'); // Pink yarn color
+                        line.setAttribute('stroke', '#D53F8C');
                         line.setAttribute('stroke-width', '4');
                         line.setAttribute('stroke-dasharray', '10, 5');
                         
@@ -409,6 +429,7 @@
 
         // --- EVENT HANDLERS ---
         addNoteBtn.addEventListener('mousedown', startAddNoteDrag);
+        board.addEventListener('mousedown', startPan);
         
         clearBoardBtn.addEventListener('click', () => {
             showConfirmationModal('Clear the entire board? This cannot be undone.', async () => {
@@ -473,31 +494,28 @@
         function handleConnectionClick(noteEl) {
             if (!firstConnectionPoint) {
                 firstConnectionPoint = noteEl.id;
-                noteEl.style.outline = '4px solid #FBBF24'; // Highlight selected note
+                noteEl.style.outline = '4px solid #FBBF24';
                 messageBox.querySelector('p').textContent = "Selected first notebox. Click another to connect.";
             } else {
-                if (firstConnectionPoint === noteEl.id) return; // Can't connect to itself
+                if (firstConnectionPoint === noteEl.id) return;
                 addDoc(connectionsCollection, { path: [firstConnectionPoint, noteEl.id] });
                 document.getElementById(firstConnectionPoint).style.outline = 'none';
-                connectModeBtn.click(); // Exit connect mode after successful connection
+                connectModeBtn.click();
             }
         }
 
         function handleDeleteConnectionClick(e) {
             if (!isDeleteConnectionMode) return;
-
             const connectionId = e.currentTarget.dataset.id;
             if (!connectionId) return;
-
             showConfirmationModal('Delete this connection yarn?', async () => {
                 await deleteDoc(doc(connectionsCollection, connectionId));
-                // The onSnapshot listener will automatically re-render the connections.
-                deleteConnectionBtn.click(); // Exit delete mode
+                deleteConnectionBtn.click();
             });
         }
 
         function startEditing(e) {
-            e.stopPropagation(); // Prevent triggering other click events
+            e.stopPropagation();
             deactivateAllModes();
             const noteEl = e.currentTarget;
             const contentDiv = noteEl.querySelector('.note-content');
@@ -524,7 +542,6 @@
             };
             
             noteEl.removeEventListener('mousedown', handleNoteMouseDown);
-
             textarea.addEventListener('blur', finishEditing);
             textarea.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Escape') {
@@ -538,24 +555,16 @@
             if (!noteId) return;
             showConfirmationModal('Delete this notebox and all its connections?', async () => {
                 const batch = writeBatch(db);
-                
                 const connectionsToDelete = [];
                 localConnections.forEach(conn => {
                     if (conn.path && conn.path.includes(noteId)) {
                         connectionsToDelete.push(conn.id);
                     }
                 });
-                
-                connectionsToDelete.forEach(connId => {
-                    batch.delete(doc(connectionsCollection, connId));
-                });
-
+                connectionsToDelete.forEach(connId => batch.delete(doc(connectionsCollection, connId)));
                 batch.delete(doc(notesCollection, noteId));
                 await batch.commit();
-
-                if (isDeleteMode) {
-                    deleteModeBtn.click();
-                }
+                if (isDeleteMode) deleteModeBtn.click();
             });
         }
 
@@ -592,59 +601,61 @@
             
             activeNote = e.currentTarget;
             e.preventDefault();
+            e.stopPropagation(); // Prevent starting a pan
 
             if (e.target.classList.contains('resize-handle')) {
                 isResizing = true;
                 activeNote.classList.add('is-resizing');
-                window.addEventListener('mousemove', onResize);
             } else if (e.target.classList.contains('note-pin')) {
                 isRotating = true;
                 activeNote.classList.add('is-rotating');
-                window.addEventListener('mousemove', onRotate);
             } else {
-                dragStartX = e.clientX;
-                dragStartY = e.clientY;
-                const rect = activeNote.getBoundingClientRect();
-                dragOffsetX = e.clientX - rect.left;
-                dragOffsetY = e.clientY - rect.top;
-                window.addEventListener('mousemove', onDrag);
+                isDragging = true;
+                activeNote.classList.add('is-dragging');
+                const noteData = localNotes.get(activeNote.id);
+                activeNote.dataset.startX = noteData.x;
+                activeNote.dataset.startY = noteData.y;
             }
-            window.addEventListener('mouseup', endInteraction, { once: true });
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp, { once: true });
+        }
+        
+        function onMouseMove(e) {
+            if (isPanning) onPan(e);
+            if (isDragging) onDrag(e);
+            if (isResizing) onResize(e);
+            if (isRotating) onRotate(e);
+        }
+
+        function onMouseUp(e) {
+            if (isPanning) endPan(e);
+            if (isDragging || isResizing || isRotating) endNoteInteraction(e);
         }
 
         function onDrag(e) {
-            if (!activeNote || isRotating || isResizing) return;
+            if (!activeNote) return;
+            const startX = parseFloat(activeNote.dataset.startX);
+            const startY = parseFloat(activeNote.dataset.startY);
+            const dx = e.clientX - dragStartX;
+            const dy = e.clientY - dragStartY;
+            const newX = startX + dx;
+            const newY = startY + dy;
+
+            activeNote.style.left = `${newX}px`;
+            activeNote.style.top = `${newY}px`;
             
-            if (!isDragging) {
-                const dx = e.clientX - dragStartX;
-                const dy = e.clientY - dragStartY;
-                if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-                    isDragging = true;
-                    activeNote.classList.add('is-dragging');
-                    board.appendChild(activeNote); // Bring to front
-                }
-            }
-
-            if (isDragging) {
-                const boardRect = board.getBoundingClientRect();
-                const newX = e.clientX - boardRect.left - dragOffsetX;
-                const newY = e.clientY - boardRect.top - dragOffsetY;
-
-                activeNote.style.left = `${newX}px`;
-                activeNote.style.top = `${newY}px`;
-                
-                const noteData = localNotes.get(activeNote.id);
-                if (noteData) {
-                    noteData.x = newX;
-                    noteData.y = newY;
-                    renderConnections();
-                }
+            const noteData = localNotes.get(activeNote.id);
+            if (noteData) {
+                noteData.x = newX;
+                noteData.y = newY;
+                renderConnections();
             }
         }
         
         function onResize(e) {
-            if (!isResizing || !activeNote) return;
-
+            if (!activeNote) return;
             const noteRect = activeNote.getBoundingClientRect();
             let newWidth = e.clientX - noteRect.left;
             let newHeight = e.clientY - noteRect.top;
@@ -664,59 +675,72 @@
         }
 
         function onRotate(e) {
-            if (!isRotating || !activeNote) return;
-
+            if (!activeNote) return;
             const noteRect = activeNote.getBoundingClientRect();
             const noteCenterX = noteRect.left + noteRect.width / 2;
             const noteCenterY = noteRect.top + noteRect.height / 2;
-
             const angleRad = Math.atan2(e.clientY - noteCenterY, e.clientX - noteCenterX);
-            const angleDeg = angleRad * (180 / Math.PI) + 90; // +90 to align with pin
+            const angleDeg = angleRad * (180 / Math.PI) + 90;
 
             activeNote.style.transform = `rotate(${angleDeg}deg)`;
             
             const noteData = localNotes.get(activeNote.id);
-            if (noteData) {
-                noteData.rotation = angleDeg;
-            }
+            if (noteData) noteData.rotation = angleDeg;
         }
         
-        function endInteraction() {
+        function endNoteInteraction() {
             if (activeNote) {
                 const noteId = activeNote.id;
+                const noteData = localNotes.get(noteId);
                 const updates = {};
                 if (isDragging) {
-                    updates.x = parseFloat(activeNote.style.left);
-                    updates.y = parseFloat(activeNote.style.top);
+                    updates.x = noteData.x;
+                    updates.y = noteData.y;
                 }
                 if (isResizing) {
-                    updates.width = parseFloat(activeNote.style.width);
-                    updates.height = parseFloat(activeNote.style.height);
+                    updates.width = noteData.width;
+                    updates.height = noteData.height;
                 }
                 if (isRotating) {
-                    const noteData = localNotes.get(noteId);
-                    if (noteData) updates.rotation = noteData.rotation;
+                    updates.rotation = noteData.rotation;
                 }
                 if (Object.keys(updates).length > 0) {
                     updateDoc(doc(notesCollection, noteId), updates);
                 }
-            }
-            
-            window.removeEventListener('mousemove', onDrag);
-            window.removeEventListener('mousemove', onRotate);
-            window.removeEventListener('mousemove', onResize);
-
-            if(activeNote) {
                 activeNote.classList.remove('is-dragging', 'is-rotating', 'is-resizing');
             }
-
             isDragging = isRotating = isResizing = false;
             activeNote = null;
         }
+        
+        // --- PANNING LOGIC ---
+        function startPan(e) {
+            // Only pan if clicking on the board or pan container, not on notes or controls
+            if (e.target !== board && e.target !== panContainer) return;
+            e.preventDefault();
+            isPanning = true;
+            panStartX = e.clientX - panX;
+            panStartY = e.clientY - panY;
+            board.classList.add('is-panning');
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp, { once: true });
+        }
 
+        function onPan(e) {
+            if (!isPanning) return;
+            panX = e.clientX - panStartX;
+            panY = e.clientY - panStartY;
+            panContainer.style.transform = `translate(${panX}px, ${panY}px)`;
+        }
+
+        function endPan() {
+            isPanning = false;
+            board.classList.remove('is-panning');
+        }
+
+        // --- DRAG-TO-ADD LOGIC ---
         function startAddNoteDrag(e) {
             e.preventDefault();
-            
             ghostNote = document.createElement('div');
             ghostNote.className = 'note';
             ghostNote.style.position = 'absolute';
@@ -725,9 +749,7 @@
             ghostNote.style.opacity = '0.7';
             ghostNote.innerHTML = `<div class="note-pin"></div><div class="note-content">New Notebox...</div>`;
             document.body.appendChild(ghostNote);
-
             moveGhostNote(e);
-
             window.addEventListener('mousemove', onAddNoteDrag);
             window.addEventListener('mouseup', endAddNoteDrag, { once: true });
         }
@@ -738,24 +760,22 @@
 
         function moveGhostNote(e) {
             if (!ghostNote) return;
-            ghostNote.style.left = `${e.clientX - 100}px`; // Center ghost note on cursor
+            ghostNote.style.left = `${e.clientX - 100}px`;
             ghostNote.style.top = `${e.clientY - 75}px`;
         }
 
         function endAddNoteDrag(e) {
             window.removeEventListener('mousemove', onAddNoteDrag);
-
             if (ghostNote) {
                 ghostNote.remove();
                 ghostNote = null;
             }
-
             const boardRect = board.getBoundingClientRect();
             if (e.clientX >= boardRect.left && e.clientX <= boardRect.right &&
                 e.clientY >= boardRect.top && e.clientY <= boardRect.bottom) {
                 
-                const dropX = e.clientX - boardRect.left - 100;
-                const dropY = e.clientY - boardRect.top - 75;
+                const dropX = e.clientX - boardRect.left - 100 - panX;
+                const dropY = e.clientY - boardRect.top - 75 - panY;
 
                 addDoc(notesCollection, {
                     text: 'Double-click to edit...',
@@ -771,19 +791,17 @@
         // --- MODAL LOGIC ---
         function showConfirmationModal(message, onConfirm) {
             modalText.textContent = message;
-            confirmAction = onConfirm; // Store the action to be executed.
+            confirmAction = onConfirm;
             confirmationModal.classList.remove('hidden');
         }
 
         function hideConfirmationModal() {
             confirmationModal.classList.add('hidden');
-            confirmAction = null; // Clear the stored action.
+            confirmAction = null;
         }
 
         modalConfirmBtn.addEventListener('click', () => {
-            if (confirmAction) {
-                confirmAction();
-            }
+            if (confirmAction) confirmAction();
             hideConfirmationModal();
         });
 
