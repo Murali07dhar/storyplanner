@@ -15,19 +15,33 @@
             background-color: #3D352E; /* Dark wood color */
             user-select: none; /* Prevent text selection during drag */
             transition: background-color 0.3s ease-in-out;
+            margin: 0;
+            padding: 0;
         }
 
         .dark body {
             background-color: #1a202c;
         }
 
+        #board-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        
+        #board-container.is-panning {
+            cursor: grabbing;
+        }
+
         #board {
             background-image: url('https://www.transparenttextures.com/patterns/cork-wallet.png');
             background-color: #C19A6B; /* Cork color */
-            width: 100%;
-            height: 100%;
-            position: relative;
-            overflow: hidden;
+            width: 8000px; /* Large initial size */
+            height: 6000px; /* Large initial size */
+            position: absolute;
+            transform-origin: 0 0; /* Makes scaling and panning calculations easier */
             box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
             transition: background-color 0.3s ease-in-out;
         }
@@ -156,10 +170,13 @@
 </head>
 <body class="w-screen h-screen m-0 p-0">
 
-    <!-- The main evidence board container -->
-    <div id="board">
-        <!-- SVG layer for drawing connection lines (the "yarn") -->
-        <svg id="connections-svg"></svg>
+    <!-- New container for pan and zoom functionality -->
+    <div id="board-container">
+        <!-- The main evidence board, now very large and pannable -->
+        <div id="board">
+            <!-- SVG layer is now INSIDE the board to inherit its transform -->
+            <svg id="connections-svg"></svg>
+        </div>
     </div>
 
     <!-- UI Controls -->
@@ -178,6 +195,17 @@
     <div id="message-box" class="hidden absolute bottom-10 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-lg shadow-xl z-30">
         <p>Click two noteboxes to connect them with yarn.</p>
     </div>
+    
+    <!-- Custom Confirm Modal -->
+    <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 text-black dark:text-white p-6 rounded-lg shadow-2xl max-w-sm mx-auto">
+            <p id="confirm-message" class="mb-4">Are you sure?</p>
+            <div class="flex justify-end space-x-4">
+                <button id="confirm-cancel" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500">Cancel</button>
+                <button id="confirm-ok" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">OK</button>
+            </div>
+        </div>
+    </div>
 
 
     <!-- Firebase SDK and Application Logic -->
@@ -187,6 +215,7 @@
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
+        const boardContainer = document.getElementById('board-container');
         const board = document.getElementById('board');
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
@@ -197,6 +226,11 @@
         const connectionsSvg = document.getElementById('connections-svg');
         const userInfoDiv = document.getElementById('userInfo');
         const messageBox = document.getElementById('message-box');
+        const confirmModal = document.getElementById('confirm-modal');
+        const confirmMessage = document.getElementById('confirm-message');
+        const confirmOkBtn = document.getElementById('confirm-ok');
+        const confirmCancelBtn = document.getElementById('confirm-cancel');
+
 
         // --- FIREBASE STATE ---
         let db, auth;
@@ -211,39 +245,44 @@
         let isRotating = false;
         let isResizing = false;
         let activeNote = null;
-        let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
         let isConnectMode = false;
         let isDeleteMode = false;
         let isDeleteConnectionMode = false;
         let firstConnectionPoint = null;
         let ghostNote = null;
-        const DRAG_THRESHOLD = 5;
         const MIN_NOTE_WIDTH = 120;
         const MIN_NOTE_HEIGHT = 100;
 
+        // --- PAN & ZOOM STATE ---
+        let scale = 0.5;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        const MIN_SCALE = 0.1;
+        const MAX_SCALE = 3.0;
+
         // --- INITIALIZATION ---
         async function initFirebase() {
-            // Your web app's Firebase configuration
-            const firebaseConfig = {
-              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
-              authDomain: "storyplanner-7ee69.firebaseapp.com",
-              projectId: "storyplanner-7ee69",
-              storageBucket: "storyplanner-7ee69.appspot.com",
-              messagingSenderId: "45084211794",
-              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
-            };
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+            if (!firebaseConfig.apiKey) {
+                console.error("Firebase config not found. Please provide it.");
+                userInfoDiv.textContent = 'Firebase connection failed.';
+                return;
+            }
 
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
 
-            notesCollection = collection(db, `points`);
-            connectionsCollection = collection(db, `snakes`);
+            notesCollection = collection(db, `artifacts/${appId}/public/data/notes`);
+            connectionsCollection = collection(db, `artifacts/${appId}/public/data/connections`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
-                    userInfoDiv.innerHTML = `<strong>Detective ID:</strong> ${userId.substring(0, 8)}...`;
+                    userInfoDiv.innerHTML = `<strong>Detective ID:</strong> ${userId}`;
                     setupRealtimeListeners();
                 } else {
                     userInfoDiv.textContent = 'Authenticating...';
@@ -251,12 +290,34 @@
             });
 
             try {
-                await signInAnonymously(auth);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
             }
         }
+        
+        // --- CUSTOM CONFIRM DIALOG ---
+        let confirmCallback = null;
+        function showConfirm(message, callback) {
+            confirmMessage.textContent = message;
+            confirmModal.classList.remove('hidden');
+            confirmCallback = callback;
+        }
+        confirmOkBtn.addEventListener('click', () => {
+            if (confirmCallback) confirmCallback(true);
+            confirmModal.classList.add('hidden');
+            confirmCallback = null;
+        });
+        confirmCancelBtn.addEventListener('click', () => {
+            if (confirmCallback) confirmCallback(false);
+            confirmModal.classList.add('hidden');
+            confirmCallback = null;
+        });
 
         // --- REAL-TIME LISTENERS ---
         function setupRealtimeListeners() {
@@ -292,7 +353,7 @@
                 noteEl.innerHTML = `<div class="note-pin"></div><div class="note-content"></div><div class="resize-handle"></div>`;
                 board.appendChild(noteEl);
                 
-                if (!noteData.rotation) {
+                if (noteData.rotation === undefined) {
                     const rotation = Math.random() * 10 - 5;
                     updateDoc(doc(notesCollection, noteData.id), { rotation });
                     noteData.rotation = rotation;
@@ -310,11 +371,7 @@
             const contentDiv = noteEl.querySelector('.note-content');
             contentDiv.textContent = noteData.text || 'Click to edit...';
 
-            if (isDeleteMode) {
-                noteEl.classList.add('is-deletable');
-            } else {
-                noteEl.classList.remove('is-deletable');
-            }
+            noteEl.classList.toggle('is-deletable', isDeleteMode);
         }
 
         function renderConnections() {
@@ -348,19 +405,25 @@
                 }
             });
         }
+        
+        function updateBoardTransform() {
+            board.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        }
 
         // --- EVENT HANDLERS ---
         addNoteBtn.addEventListener('mousedown', startAddNoteDrag);
         
-        clearBoardBtn.addEventListener('click', async () => {
-            if(confirm('Are you sure you want to clear the entire board? This cannot be undone.')) {
-                const batch = writeBatch(db);
-                const notesSnapshot = await getDocs(notesCollection);
-                notesSnapshot.forEach(doc => batch.delete(doc.ref));
-                const connectionsSnapshot = await getDocs(connectionsCollection);
-                connectionsSnapshot.forEach(doc => batch.delete(doc.ref));
-                await batch.commit();
-            }
+        clearBoardBtn.addEventListener('click', () => {
+             showConfirm('Are you sure you want to clear the entire board? This cannot be undone.', async (confirmed) => {
+                if (confirmed) {
+                    const batch = writeBatch(db);
+                    const notesSnapshot = await getDocs(notesCollection);
+                    notesSnapshot.forEach(doc => batch.delete(doc.ref));
+                    const connectionsSnapshot = await getDocs(connectionsCollection);
+                    connectionsSnapshot.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                }
+            });
         });
 
         connectModeBtn.addEventListener('click', () => {
@@ -376,7 +439,10 @@
                 connectModeBtn.textContent = 'Connect Notebox';
                 connectModeBtn.classList.add('bg-red-500', 'hover:bg-red-600');
                 connectModeBtn.classList.remove('bg-gray-500', 'hover:bg-gray-600');
-                if(firstConnectionPoint) document.getElementById(firstConnectionPoint).style.outline = 'none';
+                if(firstConnectionPoint) {
+                    const el = document.getElementById(firstConnectionPoint);
+                    if(el) el.style.outline = 'none';
+                }
                 firstConnectionPoint = null;
                 messageBox.classList.add('hidden');
             }
@@ -384,7 +450,7 @@
 
         deleteModeBtn.addEventListener('click', () => {
             isDeleteMode = !isDeleteMode;
-            document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable'));
+            document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable', isDeleteMode));
             if (isDeleteMode) {
                 if (isConnectMode) connectModeBtn.click();
                 if (isDeleteConnectionMode) deleteConnectionModeBtn.click();
@@ -422,6 +488,7 @@
         });
 
         function handleNoteClick(e) {
+            // Use triple click to edit
             if (e.detail === 3) {
                 startEditing(e);
                 return;
@@ -442,11 +509,9 @@
                 } else {
                     if (firstConnectionPoint === noteEl.id) return;
                     addDoc(connectionsCollection, { path: [firstConnectionPoint, noteEl.id] });
-                    document.getElementById(firstConnectionPoint).style.outline = 'none';
-                    isConnectMode = false;
-                    connectModeBtn.click();
-                    messageBox.querySelector('p').textContent = "Click two noteboxes to connect them with yarn.";
-                    firstConnectionPoint = null;
+                    const firstEl = document.getElementById(firstConnectionPoint);
+                    if(firstEl) firstEl.style.outline = 'none';
+                    connectModeBtn.click(); // This will reset the mode
                 }
             }
         }
@@ -473,6 +538,14 @@
                 } else if (newText === '') {
                     updateDoc(doc(notesCollection, noteEl.id), { text: 'New Notebox...' });
                 }
+                // Ensure the event listener is removed to prevent memory leaks
+                document.removeEventListener('mousedown', checkForOutsideClick);
+            };
+            
+            const checkForOutsideClick = (event) => {
+                if (!textarea.contains(event.target)) {
+                    finishEditing();
+                }
             };
             
             textarea.addEventListener('blur', finishEditing);
@@ -482,29 +555,34 @@
                     finishEditing();
                 }
             });
+            // Add a global click listener to handle finishing edit when clicking outside
+            setTimeout(() => document.addEventListener('mousedown', checkForOutsideClick), 0);
         }
 
         async function deleteNoteById(noteId) {
             if (!noteId) return;
-            if (confirm('Are you sure you want to delete this notebox and all its connections?')) {
-                const batch = writeBatch(db);
-                const connectionsToDelete = localConnections.filter(conn => conn.path.includes(noteId));
-                connectionsToDelete.forEach(conn => {
-                    batch.delete(doc(connectionsCollection, conn.id));
-                });
-                batch.delete(doc(notesCollection, noteId));
-                await batch.commit();
+            showConfirm('Are you sure you want to delete this notebox and all its connections?', async (confirmed) => {
+                if (confirmed) {
+                    const batch = writeBatch(db);
+                    const connectionsToDelete = localConnections.filter(conn => conn.path.includes(noteId));
+                    connectionsToDelete.forEach(conn => {
+                        batch.delete(doc(connectionsCollection, conn.id));
+                    });
+                    batch.delete(doc(notesCollection, noteId));
+                    await batch.commit();
 
-                if (isDeleteMode) {
-                    deleteModeBtn.click();
+                    if (isDeleteMode) {
+                        deleteModeBtn.click();
+                    }
                 }
-            }
+            });
         }
 
         // --- INTERACTION LOGIC (DRAG, ROTATE, RESIZE) ---
         function handleNoteMouseDown(e) {
             if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode || isDeleteConnectionMode) return;
             
+            e.stopPropagation(); // Prevent board panning when interacting with a note
             activeNote = e.currentTarget;
             e.preventDefault();
 
@@ -517,62 +595,40 @@
                 activeNote.classList.add('is-rotating');
                 window.addEventListener('mousemove', onRotate);
             } else {
-                dragStartX = e.clientX;
-                dragStartY = e.clientY;
-                const rect = activeNote.getBoundingClientRect();
-                dragOffsetX = e.clientX - rect.left;
-                dragOffsetY = e.clientY - rect.top;
+                isDragging = true;
+                activeNote.classList.add('is-dragging');
+                board.appendChild(activeNote); // Bring to front
                 window.addEventListener('mousemove', onDrag);
             }
             window.addEventListener('mouseup', endInteraction);
         }
 
         function onDrag(e) {
-            if (!activeNote || isRotating || isResizing) return;
+            if (!isDragging || !activeNote) return;
             
-            if (!isDragging) {
-                const dx = e.clientX - dragStartX;
-                const dy = e.clientY - dragStartY;
-                if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-                    isDragging = true;
-                    activeNote.classList.add('is-dragging');
-                    board.appendChild(activeNote);
-                }
-            }
-
-            if (isDragging) {
-                const newX = e.clientX - board.getBoundingClientRect().left - dragOffsetX;
-                const newY = e.clientY - board.getBoundingClientRect().top - dragOffsetY;
-
-                activeNote.style.left = `${newX}px`;
-                activeNote.style.top = `${newY}px`;
-                
-                const noteData = localNotes.get(activeNote.id);
-                if (noteData) {
-                    noteData.x = newX;
-                    noteData.y = newY;
-                    renderConnections();
-                }
+            const noteData = localNotes.get(activeNote.id);
+            if (noteData) {
+                noteData.x += e.movementX / scale;
+                noteData.y += e.movementY / scale;
+                activeNote.style.left = `${noteData.x}px`;
+                activeNote.style.top = `${noteData.y}px`;
+                renderConnections();
             }
         }
         
         function onResize(e) {
             if (!isResizing || !activeNote) return;
 
-            const noteRect = activeNote.getBoundingClientRect();
-            let newWidth = e.clientX - noteRect.left;
-            let newHeight = e.clientY - noteRect.top;
-
-            newWidth = Math.max(MIN_NOTE_WIDTH, newWidth);
-            newHeight = Math.max(MIN_NOTE_HEIGHT, newHeight);
-
-            activeNote.style.width = `${newWidth}px`;
-            activeNote.style.height = `${newHeight}px`;
-
             const noteData = localNotes.get(activeNote.id);
             if (noteData) {
-                noteData.width = newWidth;
-                noteData.height = newHeight;
+                let newWidth = (noteData.width || MIN_NOTE_WIDTH) + (e.movementX / scale);
+                let newHeight = (noteData.height || MIN_NOTE_HEIGHT) + (e.movementY / scale);
+                
+                noteData.width = Math.max(MIN_NOTE_WIDTH, newWidth);
+                noteData.height = Math.max(MIN_NOTE_HEIGHT, newHeight);
+
+                activeNote.style.width = `${noteData.width}px`;
+                activeNote.style.height = `${noteData.height}px`;
                 renderConnections();
             }
         }
@@ -596,19 +652,15 @@
         }
         
         function endInteraction(e) {
-            if (isDragging) {
-                const newX = parseFloat(activeNote.style.left);
-                const newY = parseFloat(activeNote.style.top);
-                updateDoc(doc(notesCollection, activeNote.id), { x: newX, y: newY });
-            }
-            if (isResizing) {
-                const newWidth = parseFloat(activeNote.style.width);
-                const newHeight = parseFloat(activeNote.style.height);
-                updateDoc(doc(notesCollection, activeNote.id), { width: newWidth, height: newHeight });
-            }
-            if (isRotating) {
-                const noteData = localNotes.get(activeNote.id);
-                if (noteData) {
+            const noteData = activeNote ? localNotes.get(activeNote.id) : null;
+            if (noteData) {
+                if (isDragging) {
+                    updateDoc(doc(notesCollection, activeNote.id), { x: noteData.x, y: noteData.y });
+                }
+                if (isResizing) {
+                    updateDoc(doc(notesCollection, activeNote.id), { width: noteData.width, height: noteData.height });
+                }
+                if (isRotating) {
                     updateDoc(doc(notesCollection, activeNote.id), { rotation: noteData.rotation });
                 }
             }
@@ -625,6 +677,51 @@
             isDragging = isRotating = isResizing = false;
             activeNote = null;
         }
+        
+        // --- PAN AND ZOOM LOGIC ---
+        boardContainer.addEventListener('mousedown', (e) => {
+            // Only pan if the click is directly on the board container or board itself
+            if (e.target === boardContainer || e.target === board) {
+                isPanning = true;
+                boardContainer.classList.add('is-panning');
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isPanning = false;
+            boardContainer.classList.remove('is-panning');
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                panX += e.movementX;
+                panY += e.movementY;
+                updateBoardTransform();
+            }
+        });
+
+        boardContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = boardContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // The point on the board under the mouse before the zoom
+            const boardX = (mouseX - panX) / scale;
+            const boardY = (mouseY - panY) / scale;
+
+            // Update scale
+            const delta = e.deltaY * -0.005;
+            const oldScale = scale;
+            scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale + delta));
+            
+            // Adjust pan to keep the point under the mouse stationary
+            panX = mouseX - boardX * scale;
+            panY = mouseY - boardY * scale;
+
+            updateBoardTransform();
+        });
+
 
         // --- DRAG AND DROP LOGIC (FOR ADDING NEW NOTES) ---
         function startAddNoteDrag(e) {
@@ -664,12 +761,14 @@
                 ghostNote = null;
             }
 
-            const boardRect = board.getBoundingClientRect();
+            const boardRect = boardContainer.getBoundingClientRect();
+            // Check if the drop is within the visible board area
             if (e.clientX >= boardRect.left && e.clientX <= boardRect.right &&
                 e.clientY >= boardRect.top && e.clientY <= boardRect.bottom) {
                 
-                const dropX = e.clientX - boardRect.left - 100;
-                const dropY = e.clientY - boardRect.top - 75;
+                // Convert viewport coordinates to board coordinates
+                const dropX = (e.clientX - boardRect.left - panX) / scale - 100; // Adjust for note width
+                const dropY = (e.clientY - boardRect.top - panY) / scale - 75; // Adjust for note height
 
                 addDoc(notesCollection, {
                     text: 'New Notebox...',
@@ -685,15 +784,26 @@
         connectionsSvg.addEventListener('click', (e) => {
             if(isDeleteConnectionMode && e.target.classList.contains('connection-line')) {
                 const connectionId = e.target.getAttribute('data-id');
-                if (confirm('Are you sure you want to delete this connection?')) {
-                    deleteDoc(doc(connectionsCollection, connectionId));
-                    deleteConnectionModeBtn.click();
-                }
+                showConfirm('Are you sure you want to delete this connection?', (confirmed) => {
+                    if (confirmed) {
+                        deleteDoc(doc(connectionsCollection, connectionId));
+                        deleteConnectionModeBtn.click();
+                    }
+                });
             }
         });
 
         // --- STARTUP ---
-        initFirebase();
+        function centerBoard() {
+            panX = (window.innerWidth - (board.offsetWidth * scale)) / 2;
+            panY = (window.innerHeight - (board.offsetHeight * scale)) / 2;
+            updateBoardTransform();
+        }
+
+        window.onload = () => {
+            initFirebase();
+            centerBoard();
+        };
     </script>
 </body>
 </html>
