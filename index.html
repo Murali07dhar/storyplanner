@@ -166,6 +166,7 @@
         <div id="userInfo" class="text-xs text-center bg-gray-700 p-2 rounded-md break-all">Connecting...</div>
         <button id="addNoteBtn" class="px-4 py-2 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg cursor-grab">Add Notebox</button>
         <button id="connectModeBtn" class="px-4 py-2 bg-red-500 text-white font-bold rounded-md hover:bg-red-600 transition-transform transform hover:scale-105 shadow-lg">Connect Notebox</button>
+        <button id="deleteConnectionModeBtn" class="px-4 py-2 bg-pink-500 text-white font-bold rounded-md hover:bg-pink-600 transition-transform transform hover:scale-105 shadow-lg">Delete Yarn</button>
         <button id="deleteModeBtn" class="px-4 py-2 bg-gray-600 text-white font-bold rounded-md hover:bg-gray-700 transition-transform transform hover:scale-105 shadow-lg">Delete Notebox</button>
         <button id="toggleThemeBtn" class="px-4 py-2 bg-indigo-500 text-white font-bold rounded-md hover:bg-indigo-600 transition-transform transform hover:scale-105 shadow-lg">Toggle Theme</button>
         <button id="clearBoardBtn" class="px-4 py-2 bg-blue-500 text-white font-bold rounded-md hover:bg-blue-600 transition-transform transform hover:scale-105 shadow-lg">Clear Board</button>
@@ -191,13 +192,14 @@
     <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
         const board = document.getElementById('board');
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
+        const deleteConnectionModeBtn = document.getElementById('deleteConnectionModeBtn');
         const deleteModeBtn = document.getElementById('deleteModeBtn');
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
@@ -223,6 +225,7 @@
         let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
         let isConnectMode = false;
         let isDeleteMode = false;
+        let isDeleteConnectionMode = false;
         let firstConnectionPoint = null;
         let ghostNote = null;
         let confirmAction = null;
@@ -232,30 +235,30 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            // Your web app's Firebase configuration - PASTE YOURS HERE
-            const firebaseConfig = {
-              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
-              authDomain: "storyplanner-7ee69.firebaseapp.com",
-              projectId: "storyplanner-7ee69",
-              storageBucket: "storyplanner-7ee69.appspot.com",
-              messagingSenderId: "45084211794",
-              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+            // Use __app_id and __firebase_config if they are available in the environment
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'main-detective-board';
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+                apiKey: "YOUR_API_KEY", // Replace with your actual config
+                authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_PROJECT_ID.appspot.com",
+                messagingSenderId: "YOUR_SENDER_ID",
+                appId: "YOUR_APP_ID"
             };
 
             // Initialize Firebase
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
+            setLogLevel('debug');
 
-            // Use a consistent ID for your board's data path.
-            const boardId = 'main-detective-board';
-            notesCollection = collection(db, `boards/${boardId}/notes`);
-            connectionsCollection = collection(db, `boards/${boardId}/connections`);
+            // Define collection paths using the app ID for multi-tenancy
+            notesCollection = collection(db, `artifacts/${appId}/public/data/notes`);
+            connectionsCollection = collection(db, `artifacts/${appId}/public/data/connections`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
-                    // Display the full user ID for easier collaboration.
                     userInfoDiv.innerHTML = `<strong>Detective ID:</strong><br>${userId}`;
                     setupRealtimeListeners();
                 } else {
@@ -264,8 +267,12 @@
             });
 
             try {
-                // On a public website, we'll always sign in anonymously.
-                await signInAnonymously(auth);
+                // Use the provided custom token if available, otherwise sign in anonymously
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
@@ -341,12 +348,10 @@
             connectionsSvg.innerHTML = ''; // Clear existing lines.
             localConnections.forEach(conn => {
                 if (conn.path && conn.path.length >= 2) {
-                    // This logic assumes connections are between two notes.
                     const noteAData = localNotes.get(conn.path[0]);
                     const noteBData = localNotes.get(conn.path[1]);
 
                     if (noteAData && noteBData) {
-                        // Calculate center points for the connection line.
                         const noteAWidth = noteAData.width || 200;
                         const noteAHeight = noteAData.height || 150;
                         const noteBWidth = noteBData.width || 200;
@@ -361,7 +366,6 @@
                         line.setAttribute('stroke-width', '4');
                         line.setAttribute('stroke-dasharray', '10, 5');
                         
-                        // Add a subtle animation to the yarn.
                         const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
                         anim.setAttribute('attributeName', 'stroke-dashoffset');
                         anim.setAttribute('from', '0');
@@ -371,6 +375,34 @@
                         line.appendChild(anim);
 
                         connectionsSvg.appendChild(line);
+
+                        if (isDeleteConnectionMode) {
+                            // Create a wider, invisible line for easier clicking (hitzone)
+                            const hitzone = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            hitzone.setAttribute('x1', line.getAttribute('x1'));
+                            hitzone.setAttribute('y1', line.getAttribute('y1'));
+                            hitzone.setAttribute('x2', line.getAttribute('x2'));
+                            hitzone.setAttribute('y2', line.getAttribute('y2'));
+                            hitzone.setAttribute('stroke', 'transparent');
+                            hitzone.setAttribute('stroke-width', '20'); // Much wider hit area
+                            hitzone.style.cursor = 'crosshair';
+                            
+                            hitzone.dataset.connId = conn.id; // Store connection ID on the hitzone
+
+                            hitzone.addEventListener('click', handleDeleteConnectionClick);
+                            
+                            // Make the visible line react on hover
+                            hitzone.addEventListener('mouseover', () => {
+                                line.setAttribute('stroke', '#E53E3E'); // Highlight in red
+                                line.setAttribute('stroke-width', '6');
+                            });
+                            hitzone.addEventListener('mouseout', () => {
+                                line.setAttribute('stroke', '#D53F8C'); // Revert to original
+                                line.setAttribute('stroke-width', '4');
+                            });
+
+                            connectionsSvg.appendChild(hitzone);
+                        }
                     }
                 }
             });
@@ -393,10 +425,12 @@
         connectModeBtn.addEventListener('click', () => {
             isConnectMode = !isConnectMode;
             if (isConnectMode) {
-                if (isDeleteMode) deleteModeBtn.click(); // Exit delete mode
+                if (isDeleteMode) deleteModeBtn.click();
+                if (isDeleteConnectionMode) deleteConnectionModeBtn.click();
                 connectModeBtn.textContent = 'Cancel Connect';
                 connectModeBtn.classList.replace('bg-red-500', 'bg-gray-500');
                 connectModeBtn.classList.replace('hover:bg-red-600', 'hover:bg-gray-600');
+                messageBox.querySelector('p').textContent = "Click two noteboxes to connect them with yarn.";
                 messageBox.classList.remove('hidden');
             } else {
                 connectModeBtn.textContent = 'Connect Notebox';
@@ -407,12 +441,37 @@
                 messageBox.classList.add('hidden');
             }
         });
+        
+        deleteConnectionModeBtn.addEventListener('click', () => {
+            isDeleteConnectionMode = !isDeleteConnectionMode;
+            if (isDeleteConnectionMode) {
+                // Deactivate other modes
+                if (isConnectMode) connectModeBtn.click();
+                if (isDeleteMode) deleteModeBtn.click();
+
+                deleteConnectionModeBtn.textContent = 'Cancel Delete Yarn';
+                deleteConnectionModeBtn.classList.replace('bg-pink-500', 'bg-gray-500');
+                deleteConnectionModeBtn.classList.replace('hover:bg-pink-600', 'hover:bg-gray-600');
+                connectionsSvg.style.pointerEvents = 'auto'; // Make SVG clickable
+                messageBox.querySelector('p').textContent = "Click a yarn line to delete it.";
+                messageBox.classList.remove('hidden');
+            } else {
+                deleteConnectionModeBtn.textContent = 'Delete Yarn';
+                deleteConnectionModeBtn.classList.replace('bg-gray-500', 'bg-pink-500');
+                deleteConnectionModeBtn.classList.replace('hover:bg-gray-600', 'hover:bg-pink-600');
+                connectionsSvg.style.pointerEvents = 'none'; // Revert to non-interactive
+                messageBox.classList.add('hidden');
+            }
+            // Re-render connections to add/remove listeners
+            renderConnections();
+        });
 
         deleteModeBtn.addEventListener('click', () => {
             isDeleteMode = !isDeleteMode;
             document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable'));
             if (isDeleteMode) {
-                if (isConnectMode) connectModeBtn.click(); // Exit connect mode
+                if (isConnectMode) connectModeBtn.click();
+                if (isDeleteConnectionMode) deleteConnectionModeBtn.click();
                 deleteModeBtn.textContent = 'Cancel Delete';
                 deleteModeBtn.classList.replace('bg-gray-600', 'bg-red-600');
                 deleteModeBtn.classList.replace('hover:bg-gray-700', 'hover:bg-red-700');
@@ -457,6 +516,19 @@
                 addDoc(connectionsCollection, { path: [firstConnectionPoint, noteEl.id] });
                 document.getElementById(firstConnectionPoint).style.outline = 'none';
                 connectModeBtn.click(); // Exit connect mode after successful connection
+            }
+        }
+
+        async function handleDeleteConnectionClick(e) {
+            const connId = e.target.dataset.connId;
+            if (!connId) return;
+
+            try {
+                await deleteDoc(doc(connectionsCollection, connId));
+                // The onSnapshot listener automatically re-renders, removing the line.
+                // User stays in delete mode to delete other connections easily.
+            } catch (error) {
+                console.error("Error deleting connection:", error);
             }
         }
 
@@ -506,7 +578,6 @@
             showConfirmationModal('Delete this notebox and all its connections?', async () => {
                 const batch = writeBatch(db);
                 // Find connections that include the noteId and delete them.
-                // This relies on the local cache, which is kept up-to-date by onSnapshot.
                 const connectionsToDelete = localConnections.filter(conn => conn.path && conn.path.includes(noteId));
                 connectionsToDelete.forEach(conn => {
                     batch.delete(doc(connectionsCollection, conn.id));
@@ -523,7 +594,7 @@
 
         // --- INTERACTION LOGIC (DRAG, ROTATE, RESIZE) ---
         function handleNoteMouseDown(e) {
-            if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode) return;
+            if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode || isDeleteConnectionMode) return;
             
             activeNote = e.currentTarget;
             e.preventDefault();
@@ -582,7 +653,6 @@
             if (!isResizing || !activeNote) return;
 
             const noteRect = activeNote.getBoundingClientRect();
-            const boardRect = board.getBoundingClientRect();
             let newWidth = e.clientX - noteRect.left;
             let newHeight = e.clientY - noteRect.top;
 
