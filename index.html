@@ -249,14 +249,14 @@
 
             // Use a consistent ID for your board's data path.
             const boardId = 'main-detective-board';
-            notesCollection = collection(db, boards/${boardId}/notes);
-            connectionsCollection = collection(db, boards/${boardId}/connections);
+            notesCollection = collection(db, `boards/${boardId}/notes`);
+            connectionsCollection = collection(db, `boards/${boardId}/connections`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
                     // Display the full user ID for easier collaboration.
-                    userInfoDiv.innerHTML = <strong>Detective ID:</strong><br>${userId};
+                    userInfoDiv.innerHTML = `<strong>Detective ID:</strong><br>${userId}`;
                     setupRealtimeListeners();
                 } else {
                     userInfoDiv.textContent = 'Authenticating...';
@@ -306,7 +306,7 @@
                 noteEl = document.createElement('div');
                 noteEl.id = noteData.id;
                 noteEl.className = 'note';
-                noteEl.innerHTML = <div class="note-pin"></div><div class="note-content"></div><div class="resize-handle"></div>;
+                noteEl.innerHTML = `<div class="note-pin"></div><div class="note-content"></div><div class="resize-handle"></div>`;
                 board.appendChild(noteEl);
                 
                 // Assign a slight random rotation on creation for a more natural look.
@@ -320,11 +320,11 @@
             }
             
             // Apply data from Firestore to the element.
-            noteEl.style.left = ${noteData.x || 50}px;
-            noteEl.style.top = ${noteData.y || 50}px;
-            noteEl.style.width = ${noteData.width || 200}px;
-            noteEl.style.height = ${noteData.height || 150}px;
-            noteEl.style.transform = rotate(${noteData.rotation || 0}deg);
+            noteEl.style.left = `${noteData.x || 50}px`;
+            noteEl.style.top = `${noteData.y || 50}px`;
+            noteEl.style.width = `${noteData.width || 200}px`;
+            noteEl.style.height = `${noteData.height || 150}px`;
+            noteEl.style.transform = `rotate(${noteData.rotation || 0}deg)`;
             
             const contentDiv = noteEl.querySelector('.note-content');
             contentDiv.textContent = noteData.text || 'Double-click to edit...';
@@ -565,8 +565,8 @@
                 const newX = e.clientX - boardRect.left - dragOffsetX;
                 const newY = e.clientY - boardRect.top - dragOffsetY;
 
-                activeNote.style.left = ${newX}px;
-                activeNote.style.top = ${newY}px;
+                activeNote.style.left = `${newX}px`;
+                activeNote.style.top = `${newY}px`;
                 
                 // Update local data for real-time connection rendering.
                 const noteData = localNotes.get(activeNote.id);
@@ -589,8 +589,8 @@
             newWidth = Math.max(MIN_NOTE_WIDTH, newWidth);
             newHeight = Math.max(MIN_NOTE_HEIGHT, newHeight);
 
-            activeNote.style.width = ${newWidth}px;
-            activeNote.style.height = ${newHeight}px;
+            activeNote.style.width = `${newWidth}px`;
+            activeNote.style.height = `${newHeight}px`;
 
             const noteData = localNotes.get(activeNote.id);
             if (noteData) {
@@ -610,7 +610,7 @@
             const angleRad = Math.atan2(e.clientY - noteCenterY, e.clientX - noteCenterX);
             const angleDeg = angleRad * (180 / Math.PI) + 90; // +90 to align with pin
 
-            activeNote.style.transform = rotate(${angleDeg}deg);
+            activeNote.style.transform = `rotate(${angleDeg}deg)`;
             
             const noteData = localNotes.get(activeNote.id);
             if (noteData) {
@@ -663,7 +663,7 @@
             ghostNote.style.zIndex = '1000';
             ghostNote.style.pointerEvents = 'none';
             ghostNote.style.opacity = '0.7';
-            ghostNote.innerHTML = <div class="note-pin"></div><div class="note-content">New Notebox...</div>;
+            ghostNote.innerHTML = `<div class="note-pin"></div><div class="note-content">New Notebox...</div>`;
             document.body.appendChild(ghostNote);
 
             moveGhostNote(e);
@@ -678,8 +678,8 @@
 
         function moveGhostNote(e) {
             if (!ghostNote) return;
-            ghostNote.style.left = ${e.clientX - 100}px; // Center ghost note on cursor
-            ghostNote.style.top = ${e.clientY - 75}px;
+            ghostNote.style.left = `${e.clientX - 100}px`; // Center ghost note on cursor
+            ghostNote.style.top = `${e.clientY - 75}px`;
         }
 
         function endAddNoteDrag(e) {
