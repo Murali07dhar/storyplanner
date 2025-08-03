@@ -143,8 +143,29 @@
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
+            pointer-events: none; /* Default: can't interact with SVG */
         }
+        
+        /* When active, the SVG container can be interacted with */
+        #connections-svg.is-active {
+            pointer-events: auto;
+        }
+
+        .connection-line {
+            transition: stroke-width 0.2s ease, stroke 0.2s ease;
+            pointer-events: none; /* Default: lines are not interactive */
+        }
+
+        .connection-line.is-deletable {
+            pointer-events: auto; /* In delete mode, lines are interactive */
+            cursor: crosshair;
+        }
+
+        .connection-line.is-deletable:hover {
+            stroke: #E53E3E !important; /* Red color on hover */
+            stroke-width: 8 !important;
+        }
+
 
         /* Custom font for the controls panel */
         #controls {
@@ -166,6 +187,7 @@
         <div id="userInfo" class="text-xs text-center bg-gray-700 p-2 rounded-md break-all">Connecting...</div>
         <button id="addNoteBtn" class="px-4 py-2 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg cursor-grab">Add Notebox</button>
         <button id="connectModeBtn" class="px-4 py-2 bg-red-500 text-white font-bold rounded-md hover:bg-red-600 transition-transform transform hover:scale-105 shadow-lg">Connect Notebox</button>
+        <button id="deleteConnectionBtn" class="px-4 py-2 bg-purple-500 text-white font-bold rounded-md hover:bg-purple-600 transition-transform transform hover:scale-105 shadow-lg">Delete Connection</button>
         <button id="deleteModeBtn" class="px-4 py-2 bg-gray-600 text-white font-bold rounded-md hover:bg-gray-700 transition-transform transform hover:scale-105 shadow-lg">Delete Notebox</button>
         <button id="toggleThemeBtn" class="px-4 py-2 bg-indigo-500 text-white font-bold rounded-md hover:bg-indigo-600 transition-transform transform hover:scale-105 shadow-lg">Toggle Theme</button>
         <button id="clearBoardBtn" class="px-4 py-2 bg-blue-500 text-white font-bold rounded-md hover:bg-blue-600 transition-transform transform hover:scale-105 shadow-lg">Clear Board</button>
@@ -191,13 +213,14 @@
     <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
         const board = document.getElementById('board');
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
+        const deleteConnectionBtn = document.getElementById('deleteConnectionBtn');
         const deleteModeBtn = document.getElementById('deleteModeBtn');
         const toggleThemeBtn = document.getElementById('toggleThemeBtn');
         const clearBoardBtn = document.getElementById('clearBoardBtn');
@@ -217,12 +240,13 @@
 
         // --- APP STATE ---
         let localNotes = new Map();
-        let localConnections = [];
+        let localConnections = new Map();
         let isDragging = false, isRotating = false, isResizing = false;
         let activeNote = null;
         let dragOffsetX, dragOffsetY, dragStartX, dragStartY;
         let isConnectMode = false;
         let isDeleteMode = false;
+        let isDeleteConnectionMode = false;
         let firstConnectionPoint = null;
         let ghostNote = null;
         let confirmAction = null;
@@ -232,30 +256,30 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            // Your web app's Firebase configuration - PASTE YOURS HERE
-            const firebaseConfig = {
-              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
-              authDomain: "storyplanner-7ee69.firebaseapp.com",
-              projectId: "storyplanner-7ee69",
-              storageBucket: "storyplanner-7ee69.appspot.com",
-              messagingSenderId: "45084211794",
-              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
-            };
+            // Use environment variables for Firebase config and App ID
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-detective-board';
 
+            if (!firebaseConfig) {
+                userInfoDiv.textContent = 'Firebase config not found.';
+                console.error("Firebase configuration is missing.");
+                return;
+            }
+            
             // Initialize Firebase
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
+            setLogLevel('debug');
 
-            // Use a consistent ID for your board's data path.
-            const boardId = 'main-detective-board';
-            notesCollection = collection(db, `boards/${boardId}/notes`);
-            connectionsCollection = collection(db, `boards/${boardId}/connections`);
+            // Define collection paths using the App ID for multi-tenancy
+            const boardPath = `/artifacts/${appId}/public/data`;
+            notesCollection = collection(db, `${boardPath}/notes`);
+            connectionsCollection = collection(db, `${boardPath}/connections`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
                     userId = user.uid;
-                    // Display the full user ID for easier collaboration.
                     userInfoDiv.innerHTML = `<strong>Detective ID:</strong><br>${userId}`;
                     setupRealtimeListeners();
                 } else {
@@ -264,8 +288,12 @@
             });
 
             try {
-                // On a public website, we'll always sign in anonymously.
-                await signInAnonymously(auth);
+                // Sign in using the provided token or anonymously as a fallback
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
@@ -293,7 +321,15 @@
 
             // Listen for changes in the connections collection.
             onSnapshot(connectionsCollection, (snapshot) => {
-                localConnections = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                snapshot.docChanges().forEach((change) => {
+                     const connData = { id: change.doc.id, ...change.doc.data() };
+                     if (change.type === "added" || change.type === "modified") {
+                         localConnections.set(connData.id, connData);
+                     }
+                     if(change.type === "removed") {
+                         localConnections.delete(connData.id);
+                     }
+                });
                 renderConnections();
             });
         }
@@ -316,7 +352,8 @@
                     noteData.rotation = rotation;
                 }
                 noteEl.addEventListener('mousedown', handleNoteMouseDown);
-                noteEl.addEventListener('click', handleNoteClick);
+                noteEl.addEventListener('dblclick', startEditing); // Use double-click for editing
+                noteEl.addEventListener('click', handleNoteSingleClick); // Use single-click for modes
             }
             
             // Apply data from Firestore to the element.
@@ -330,29 +367,27 @@
             contentDiv.textContent = noteData.text || 'Double-click to edit...';
 
             // Toggle delete-mode styling.
-            if (isDeleteMode) {
-                noteEl.classList.add('is-deletable');
-            } else {
-                noteEl.classList.remove('is-deletable');
-            }
+            noteEl.classList.toggle('is-deletable', isDeleteMode);
         }
 
         function renderConnections() {
             connectionsSvg.innerHTML = ''; // Clear existing lines.
             localConnections.forEach(conn => {
                 if (conn.path && conn.path.length >= 2) {
-                    // This logic assumes connections are between two notes.
                     const noteAData = localNotes.get(conn.path[0]);
                     const noteBData = localNotes.get(conn.path[1]);
 
                     if (noteAData && noteBData) {
-                        // Calculate center points for the connection line.
                         const noteAWidth = noteAData.width || 200;
                         const noteAHeight = noteAData.height || 150;
                         const noteBWidth = noteBData.width || 200;
                         const noteBHeight = noteBData.height || 150;
 
                         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.dataset.id = conn.id; // Store Firestore ID for deletion
+                        line.classList.add('connection-line');
+                        line.classList.toggle('is-deletable', isDeleteConnectionMode);
+
                         line.setAttribute('x1', noteAData.x + noteAWidth / 2);
                         line.setAttribute('y1', noteAData.y + noteAHeight / 2);
                         line.setAttribute('x2', noteBData.x + noteBWidth / 2);
@@ -361,7 +396,8 @@
                         line.setAttribute('stroke-width', '4');
                         line.setAttribute('stroke-dasharray', '10, 5');
                         
-                        // Add a subtle animation to the yarn.
+                        line.addEventListener('click', handleDeleteConnectionClick);
+                        
                         const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
                         anim.setAttribute('attributeName', 'stroke-dashoffset');
                         anim.setAttribute('from', '0');
@@ -391,35 +427,36 @@
         });
 
         connectModeBtn.addEventListener('click', () => {
-            isConnectMode = !isConnectMode;
-            if (isConnectMode) {
-                if (isDeleteMode) deleteModeBtn.click(); // Exit delete mode
+            const wasActive = isConnectMode;
+            deactivateAllModes();
+            if (!wasActive) {
+                isConnectMode = true;
                 connectModeBtn.textContent = 'Cancel Connect';
                 connectModeBtn.classList.replace('bg-red-500', 'bg-gray-500');
-                connectModeBtn.classList.replace('hover:bg-red-600', 'hover:bg-gray-600');
                 messageBox.classList.remove('hidden');
-            } else {
-                connectModeBtn.textContent = 'Connect Notebox';
-                connectModeBtn.classList.replace('bg-gray-500', 'bg-red-500');
-                connectModeBtn.classList.replace('hover:bg-gray-600', 'hover:bg-red-600');
-                if(firstConnectionPoint) document.getElementById(firstConnectionPoint).style.outline = 'none';
-                firstConnectionPoint = null;
-                messageBox.classList.add('hidden');
+            }
+        });
+
+        deleteConnectionBtn.addEventListener('click', () => {
+            const wasActive = isDeleteConnectionMode;
+            deactivateAllModes();
+            if (!wasActive) {
+                isDeleteConnectionMode = true;
+                deleteConnectionBtn.textContent = 'Cancel Delete';
+                deleteConnectionBtn.classList.replace('bg-purple-500', 'bg-red-600');
+                connectionsSvg.classList.add('is-active');
+                document.querySelectorAll('.connection-line').forEach(line => line.classList.add('is-deletable'));
             }
         });
 
         deleteModeBtn.addEventListener('click', () => {
-            isDeleteMode = !isDeleteMode;
-            document.querySelectorAll('.note').forEach(n => n.classList.toggle('is-deletable'));
-            if (isDeleteMode) {
-                if (isConnectMode) connectModeBtn.click(); // Exit connect mode
+            const wasActive = isDeleteMode;
+            deactivateAllModes();
+            if (!wasActive) {
+                isDeleteMode = true;
                 deleteModeBtn.textContent = 'Cancel Delete';
                 deleteModeBtn.classList.replace('bg-gray-600', 'bg-red-600');
-                deleteModeBtn.classList.replace('hover:bg-gray-700', 'hover:bg-red-700');
-            } else {
-                deleteModeBtn.textContent = 'Delete Notebox';
-                deleteModeBtn.classList.replace('bg-red-600', 'bg-gray-600');
-                deleteModeBtn.classList.replace('hover:bg-red-700', 'hover:bg-gray-700');
+                document.querySelectorAll('.note').forEach(n => n.classList.add('is-deletable'));
             }
         });
 
@@ -427,23 +464,14 @@
             document.documentElement.classList.toggle('dark');
         });
 
-        function handleNoteClick(e) {
-            // Use double-click (e.detail === 2) to start editing, which is more standard.
-            if (e.detail === 2) {
-                startEditing(e);
+        function handleNoteSingleClick(e) {
+            const noteEl = e.currentTarget;
+            if (isDeleteMode) {
+                deleteNoteById(noteEl.id);
                 return;
             }
-
-            // Single click logic
-            if (e.detail === 1) {
-                const noteEl = e.currentTarget;
-                if (isDeleteMode) {
-                    deleteNoteById(noteEl.id);
-                    return;
-                }
-                if (isConnectMode) {
-                    handleConnectionClick(noteEl);
-                }
+            if (isConnectMode) {
+                handleConnectionClick(noteEl);
             }
         }
         
@@ -460,8 +488,22 @@
             }
         }
 
+        function handleDeleteConnectionClick(e) {
+            if (!isDeleteConnectionMode) return;
+
+            const connectionId = e.currentTarget.dataset.id;
+            if (!connectionId) return;
+
+            showConfirmationModal('Delete this connection yarn?', async () => {
+                await deleteDoc(doc(connectionsCollection, connectionId));
+                // The onSnapshot listener will automatically re-render the connections.
+                deleteConnectionBtn.click(); // Exit delete mode
+            });
+        }
+
         function startEditing(e) {
             e.stopPropagation(); // Prevent triggering other click events
+            deactivateAllModes();
             const noteEl = e.currentTarget;
             const contentDiv = noteEl.querySelector('.note-content');
             const noteData = localNotes.get(noteEl.id);
@@ -483,20 +525,16 @@
                 } else if (!newText) {
                     updateDoc(doc(notesCollection, noteEl.id), { text: 'Double-click to edit...' });
                 }
-                // Re-add event listeners to the note element after editing
                 noteEl.addEventListener('mousedown', handleNoteMouseDown);
-                noteEl.addEventListener('click', handleNoteClick);
             };
             
-            // Remove parent listeners to prevent dragging while editing
             noteEl.removeEventListener('mousedown', handleNoteMouseDown);
-            noteEl.removeEventListener('click', handleNoteClick);
 
             textarea.addEventListener('blur', finishEditing);
             textarea.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Escape') {
-                    textarea.value = currentText; // Revert changes
-                    textarea.blur(); // Trigger finishEditing
+                    textarea.value = currentText;
+                    textarea.blur();
                 }
             });
         }
@@ -505,25 +543,57 @@
             if (!noteId) return;
             showConfirmationModal('Delete this notebox and all its connections?', async () => {
                 const batch = writeBatch(db);
-                // Find connections that include the noteId and delete them.
-                // This relies on the local cache, which is kept up-to-date by onSnapshot.
-                const connectionsToDelete = localConnections.filter(conn => conn.path && conn.path.includes(noteId));
-                connectionsToDelete.forEach(conn => {
-                    batch.delete(doc(connectionsCollection, conn.id));
+                
+                const connectionsToDelete = [];
+                localConnections.forEach(conn => {
+                    if (conn.path && conn.path.includes(noteId)) {
+                        connectionsToDelete.push(conn.id);
+                    }
                 });
-                // Delete the note itself.
+                
+                connectionsToDelete.forEach(connId => {
+                    batch.delete(doc(connectionsCollection, connId));
+                });
+
                 batch.delete(doc(notesCollection, noteId));
                 await batch.commit();
 
                 if (isDeleteMode) {
-                    deleteModeBtn.click(); // Exit delete mode after a successful deletion
+                    deleteModeBtn.click();
                 }
             });
         }
 
-        // --- INTERACTION LOGIC (DRAG, ROTATE, RESIZE) ---
+        // --- INTERACTION & MODE LOGIC ---
+        function deactivateAllModes() {
+            if (isConnectMode) {
+                isConnectMode = false;
+                connectModeBtn.textContent = 'Connect Notebox';
+                connectModeBtn.classList.replace('bg-gray-500', 'bg-red-500');
+                if(firstConnectionPoint) {
+                   const el = document.getElementById(firstConnectionPoint);
+                   if(el) el.style.outline = 'none';
+                }
+                firstConnectionPoint = null;
+                messageBox.classList.add('hidden');
+            }
+            if (isDeleteConnectionMode) {
+                isDeleteConnectionMode = false;
+                deleteConnectionBtn.textContent = 'Delete Connection';
+                deleteConnectionBtn.classList.replace('bg-red-600', 'bg-purple-500');
+                connectionsSvg.classList.remove('is-active');
+                document.querySelectorAll('.connection-line').forEach(line => line.classList.remove('is-deletable'));
+            }
+            if (isDeleteMode) {
+                isDeleteMode = false;
+                deleteModeBtn.textContent = 'Delete Notebox';
+                deleteModeBtn.classList.replace('bg-red-600', 'bg-gray-600');
+                document.querySelectorAll('.note').forEach(n => n.classList.remove('is-deletable'));
+            }
+        }
+
         function handleNoteMouseDown(e) {
-            if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode) return;
+            if (e.target.tagName === 'TEXTAREA' || isConnectMode || isDeleteMode || isDeleteConnectionMode) return;
             
             activeNote = e.currentTarget;
             e.preventDefault();
@@ -544,7 +614,7 @@
                 dragOffsetY = e.clientY - rect.top;
                 window.addEventListener('mousemove', onDrag);
             }
-            window.addEventListener('mouseup', endInteraction);
+            window.addEventListener('mouseup', endInteraction, { once: true });
         }
 
         function onDrag(e) {
@@ -568,7 +638,6 @@
                 activeNote.style.left = `${newX}px`;
                 activeNote.style.top = `${newY}px`;
                 
-                // Update local data for real-time connection rendering.
                 const noteData = localNotes.get(activeNote.id);
                 if (noteData) {
                     noteData.x = newX;
@@ -582,7 +651,6 @@
             if (!isResizing || !activeNote) return;
 
             const noteRect = activeNote.getBoundingClientRect();
-            const boardRect = board.getBoundingClientRect();
             let newWidth = e.clientX - noteRect.left;
             let newHeight = e.clientY - noteRect.top;
 
@@ -619,31 +687,29 @@
         }
         
         function endInteraction() {
-            // Update Firestore with the final state after interaction ends.
             if (activeNote) {
                 const noteId = activeNote.id;
+                const updates = {};
                 if (isDragging) {
-                    const newX = parseFloat(activeNote.style.left);
-                    const newY = parseFloat(activeNote.style.top);
-                    updateDoc(doc(notesCollection, noteId), { x: newX, y: newY });
+                    updates.x = parseFloat(activeNote.style.left);
+                    updates.y = parseFloat(activeNote.style.top);
                 }
                 if (isResizing) {
-                    const newWidth = parseFloat(activeNote.style.width);
-                    const newHeight = parseFloat(activeNote.style.height);
-                    updateDoc(doc(notesCollection, noteId), { width: newWidth, height: newHeight });
+                    updates.width = parseFloat(activeNote.style.width);
+                    updates.height = parseFloat(activeNote.style.height);
                 }
                 if (isRotating) {
                     const noteData = localNotes.get(noteId);
-                    if (noteData) {
-                        updateDoc(doc(notesCollection, noteId), { rotation: noteData.rotation });
-                    }
+                    if (noteData) updates.rotation = noteData.rotation;
+                }
+                if (Object.keys(updates).length > 0) {
+                    updateDoc(doc(notesCollection, noteId), updates);
                 }
             }
             
             window.removeEventListener('mousemove', onDrag);
             window.removeEventListener('mousemove', onRotate);
             window.removeEventListener('mousemove', onResize);
-            window.removeEventListener('mouseup', endInteraction);
 
             if(activeNote) {
                 activeNote.classList.remove('is-dragging', 'is-rotating', 'is-resizing');
@@ -653,7 +719,6 @@
             activeNote = null;
         }
 
-        // --- DRAG AND DROP LOGIC (FOR ADDING NEW NOTES) ---
         function startAddNoteDrag(e) {
             e.preventDefault();
             
@@ -669,7 +734,7 @@
             moveGhostNote(e);
 
             window.addEventListener('mousemove', onAddNoteDrag);
-            window.addEventListener('mouseup', endAddNoteDrag);
+            window.addEventListener('mouseup', endAddNoteDrag, { once: true });
         }
 
         function onAddNoteDrag(e) {
@@ -684,7 +749,6 @@
 
         function endAddNoteDrag(e) {
             window.removeEventListener('mousemove', onAddNoteDrag);
-            window.removeEventListener('mouseup', endAddNoteDrag);
 
             if (ghostNote) {
                 ghostNote.remove();
