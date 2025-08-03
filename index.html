@@ -191,7 +191,7 @@
     <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
@@ -232,17 +232,25 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            // Use the firebase config and app ID provided by the environment for security and proper namespacing.
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'detective-board-default';
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+            // Your web app's Firebase configuration - PASTE YOURS HERE
+            const firebaseConfig = {
+              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
+              authDomain: "storyplanner-7ee69.firebaseapp.com",
+              projectId: "storyplanner-7ee69",
+              storageBucket: "storyplanner-7ee69.appspot.com",
+              messagingSenderId: "45084211794",
+              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+            };
 
+            // Initialize Firebase
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
 
-            // Use structured, app-specific paths for collections to support multiple boards.
-            notesCollection = collection(db, `artifacts/${appId}/public/data/notes`);
-            connectionsCollection = collection(db, `artifacts/${appId}/public/data/connections`);
+            // Use a consistent ID for your board's data path.
+            const boardId = 'main-detective-board';
+            notesCollection = collection(db, `boards/${boardId}/notes`);
+            connectionsCollection = collection(db, `boards/${boardId}/connections`);
 
             onAuthStateChanged(auth, user => {
                 if (user) {
@@ -256,13 +264,8 @@
             });
 
             try {
-                // Sign in with a custom token if available, otherwise sign in anonymously.
-                // This is the standard authentication flow for this environment.
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                // On a public website, we'll always sign in anonymously.
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
