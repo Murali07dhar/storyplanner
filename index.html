@@ -213,7 +213,7 @@
     <!-- Firebase SDK and Application Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM ELEMENTS ---
@@ -256,24 +256,23 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            // Use environment variables for Firebase config and App ID
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-detective-board';
+            // Your web app's Firebase configuration
+            const firebaseConfig = {
+              apiKey: "AIzaSyCkhSNxLzT5aphPaz5lQnXNtmEbYS7RUDU",
+              authDomain: "storyplanner-7ee69.firebaseapp.com",
+              projectId: "storyplanner-7ee69",
+              storageBucket: "storyplanner-7ee69.appspot.com",
+              messagingSenderId: "45084211794",
+              appId: "1:45084211794:web:e9d1b8634e77a20611bd8b"
+            };
 
-            if (!firebaseConfig) {
-                userInfoDiv.textContent = 'Firebase config not found.';
-                console.error("Firebase configuration is missing.");
-                return;
-            }
-            
             // Initialize Firebase
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            setLogLevel('debug');
 
-            // Define collection paths using the App ID for multi-tenancy
-            const boardPath = `/artifacts/${appId}/public/data`;
+            // This path is for a single, public board on your website
+            const boardPath = `/boards/main-detective-board`; 
             notesCollection = collection(db, `${boardPath}/notes`);
             connectionsCollection = collection(db, `${boardPath}/connections`);
 
@@ -288,12 +287,8 @@
             });
 
             try {
-                // Sign in using the provided token or anonymously as a fallback
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                // Sign users in anonymously so they can collaborate
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Authentication failed:", error);
                 userInfoDiv.textContent = 'Authentication Failed.';
