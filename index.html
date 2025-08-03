@@ -243,7 +243,7 @@
         const messageBox = document.getElementById('message-box');
 
         // --- FIREBASE & APP STATE ---
-        let db, auth;
+        let db, auth, appId;
         let userId, currentBoardId;
         let notesCollection, connectionsCollection;
         let notesListener, connectionsListener; // To store unsubscribe functions
@@ -263,7 +263,7 @@
 
         // --- INITIALIZATION ---
         async function initFirebase() {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'detective-board-default';
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'detective-board-default';
             const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
             
             if (!firebaseConfig.apiKey) {
@@ -315,7 +315,7 @@
             showCreateBoardBtn.classList.remove('hidden');
             newBoardNameInput.value = '';
 
-            const boardsListCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boardsList');
+            const boardsListCollection = collection(db, 'artifacts', appId, 'users', userId, 'boardsList');
             const q = query(boardsListCollection); 
             
             onSnapshot(q, (snapshot) => {
@@ -342,19 +342,23 @@
                 await showConfirmation("Please enter a name for the new board.", true);
                 return;
             }
-            const boardsListCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boardsList');
+            const boardsListCollection = collection(db, 'artifacts', appId, 'users', userId, 'boardsList');
             try {
                 const newBoardDoc = await addDoc(boardsListCollection, {
                     name: boardName,
                     createdAt: serverTimestamp()
                 });
+                
+                // Immediately load the board. This will switch the view.
+                loadBoard(newBoardDoc.id);
+
+                // Now, reset the state of the (now hidden) creation form.
                 newBoardNameInput.value = '';
-                // Hide the form and show the button again after creation
                 createBoardForm.classList.add('hidden');
                 showCreateBoardBtn.classList.remove('hidden');
-                loadBoard(newBoardDoc.id);
             } catch (error) {
                 console.error("Error creating new board: ", error);
+                await showConfirmation("Failed to create the board. Please try again or check the console for errors.", true);
             }
         }
 
@@ -362,8 +366,8 @@
             currentBoardId = boardId;
 
             // Update collection references
-            notesCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boards', currentBoardId, 'notes');
-            connectionsCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boards', currentBoardId, 'connections');
+            notesCollection = collection(db, 'artifacts', appId, 'users', userId, 'boards', currentBoardId, 'notes');
+            connectionsCollection = collection(db, 'artifacts', appId, 'users', userId, 'boards', currentBoardId, 'connections');
 
             // Clear old data and UI
             board.innerHTML = '<svg id="connections-svg"></svg>'; // Keep the SVG element
