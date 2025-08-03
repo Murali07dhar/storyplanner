@@ -165,10 +165,18 @@
                     <!-- Boards will be populated here -->
                 </ul>
             </div>
-            <div>
-                <h2 class="text-2xl text-yellow-200 mb-3">Or Create New</h2>
-                <input type="text" id="new-board-name" placeholder="Enter new board name..." class="w-full p-3 bg-gray-900 border border-gray-500 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-400">
-                <button id="create-board-btn" class="w-full mt-3 px-4 py-3 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg">Create Board</button>
+            
+            <!-- Button to show the create board form -->
+            <div class="mt-6">
+                <button id="show-create-board-btn" class="w-full px-4 py-3 bg-yellow-400 text-gray-900 font-bold rounded-md hover:bg-yellow-500 transition-transform transform hover:scale-105 shadow-lg">Create a New Board</button>
+            </div>
+            
+            <!-- Hidden form to create a new board -->
+            <div id="create-board-form" class="hidden mt-4">
+                <h2 class="text-2xl text-yellow-200 mb-3">Enter New Board Name</h2>
+                <input type="text" id="new-board-name" placeholder="Case File #..." class="w-full p-3 bg-gray-900 border border-gray-500 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                <button id="create-board-btn" class="w-full mt-3 px-4 py-3 bg-green-500 text-white font-bold rounded-md hover:bg-green-600 transition-transform transform hover:scale-105 shadow-lg">Create and Open</button>
+                <button id="cancel-create-btn" class="w-full mt-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">Cancel</button>
             </div>
         </div>
     </div>
@@ -221,6 +229,9 @@
         const boardList = document.getElementById('board-list');
         const createBoardBtn = document.getElementById('create-board-btn');
         const newBoardNameInput = document.getElementById('new-board-name');
+        const showCreateBoardBtn = document.getElementById('show-create-board-btn');
+        const createBoardForm = document.getElementById('create-board-form');
+        const cancelCreateBtn = document.getElementById('cancel-create-btn');
         const addNoteBtn = document.getElementById('addNoteBtn');
         const connectModeBtn = document.getElementById('connectModeBtn');
         const deleteModeBtn = document.getElementById('deleteModeBtn');
@@ -298,6 +309,11 @@
             controls.classList.add('hidden');
             boardSelector.classList.remove('hidden');
             boardList.innerHTML = '<li>Loading boards...</li>';
+            
+            // Reset create board form state
+            createBoardForm.classList.add('hidden');
+            showCreateBoardBtn.classList.remove('hidden');
+            newBoardNameInput.value = '';
 
             const boardsListCollection = collection(db, 'artifacts', 'detective-board', 'users', userId, 'boardsList');
             const q = query(boardsListCollection); 
@@ -333,6 +349,9 @@
                     createdAt: serverTimestamp()
                 });
                 newBoardNameInput.value = '';
+                // Hide the form and show the button again after creation
+                createBoardForm.classList.add('hidden');
+                showCreateBoardBtn.classList.remove('hidden');
                 loadBoard(newBoardDoc.id);
             } catch (error) {
                 console.error("Error creating new board: ", error);
@@ -486,6 +505,17 @@
         }
 
         // --- EVENT HANDLERS ---
+        showCreateBoardBtn.addEventListener('click', () => {
+            createBoardForm.classList.remove('hidden');
+            showCreateBoardBtn.classList.add('hidden');
+        });
+
+        cancelCreateBtn.addEventListener('click', () => {
+            createBoardForm.classList.add('hidden');
+            showCreateBoardBtn.classList.remove('hidden');
+            newBoardNameInput.value = '';
+        });
+
         createBoardBtn.addEventListener('click', createNewBoard);
         newBoardNameInput.addEventListener('keyup', (e) => {
             if (e.key === 'Enter') createNewBoard();
